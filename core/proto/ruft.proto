@@ -1,0 +1,12 @@
+syntax = "proto3";
+import "request_vote.proto";
+import "append_entry.proto";
+import "pre_vote.proto";
+
+package ruft;
+
+service RuftRpc {
+  rpc PreVote(PreVoteRequest) returns (PreVoteResponse);
+  rpc RequestVote(RequestVoteRequest) returns (RequestVoteResponse);
+  rpc AppendEntries(AppendEntriesRequest) returns (AppendEntriesResponse);
+}

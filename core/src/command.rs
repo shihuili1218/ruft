@@ -1,9 +1,16 @@
 use bytes::Bytes;
 
-pub struct Command {
+pub struct CmdReq {
     pub id: String,
     pub data: Bytes,
 }
+
+pub enum CmdResp {
+    Success,
+    Failure { message: String },
+    Unknown { log_id: usize },
+}
+
 
 #[cfg(test)]
 mod tests {
@@ -11,12 +18,12 @@ mod tests {
 
     #[test]
     fn it_works() {
-        let cmd = Command {
+        let cmd = CmdReq {
             id: "cmd_789".to_string(),
             data: Bytes::from(b"network_data".to_vec()),
         };
         // 克隆 Bytes 是零拷贝（仅复制引用计数）
-        let cmd_clone = Command {
+        let cmd_clone = CmdReq {
             id: cmd.id.clone(),
             data: cmd.data.clone(),
         };
@@ -24,3 +31,5 @@ mod tests {
         assert_eq!(cmd.data, cmd_clone.data);
     }
 }
+
+

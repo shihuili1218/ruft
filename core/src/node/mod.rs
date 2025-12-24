@@ -1,11 +1,9 @@
-use crate::command::Command;
+use crate::command::{CmdReq, CmdResp};
 use crate::config::Config;
-use crate::node::meta::Meta;
 use crate::node::state::State;
-use crate::response::Response;
 use std::path::PathBuf;
+use crate::meta::Meta;
 
-mod meta;
 mod state;
 
 struct Node {
@@ -21,16 +19,16 @@ impl Node {
         }
     }
 
-    pub fn emit(&self, command: Command) -> Response {
+    pub fn emit(&self, command: CmdReq) -> CmdResp {
         match &self.state {
-            State::Electing => Response::Failure {
+            State::Electing => CmdResp::Failure {
                 message: String::from("Electing"),
             },
             State::Leading { term, leader } => leader.append_entry(command),
-            State::Following { term, follower } => Response::Failure {
+            State::Following { term, follower } => CmdResp::Failure {
                 message: format!("Following, leader[{}]: {}", term, follower.leader),
             },
-            State::Learning { term, learner } => Response::Failure {
+            State::Learning { term, learner } => CmdResp::Failure {
                 message: format!("Learning, leader[{}]: {}", term, learner.leader),
             },
         }

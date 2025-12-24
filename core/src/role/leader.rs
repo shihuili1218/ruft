@@ -1,6 +1,5 @@
-use crate::command::Command;
+use crate::command::{CmdReq, CmdResp};
 use crate::endpoint::Endpoint;
-use crate::response::Response;
 
 pub struct Leader {
     endpoint: Endpoint,
@@ -17,8 +16,8 @@ impl Leader {
         }
     }
 
-    pub(crate) fn append_entry(&self, command: Command) -> Response {
-        Response::Failure {
+    pub fn append_entry(&self, command: CmdReq) -> CmdResp {
+        CmdResp::Failure {
             message: String::new(),
         }
     }
