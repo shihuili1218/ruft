@@ -1,4 +1,8 @@
 use crate::endpoint::Endpoint;
+use crate::rpc::{
+    AppendEntriesRequest, AppendEntriesResponse, PreVoteRequest, PreVoteResponse,
+    RequestVoteRequest, RequestVoteResponse,
+};
 
 pub struct Follower {
     endpoint: Endpoint,
@@ -10,9 +14,15 @@ impl Follower {
         Follower { endpoint, leader }
     }
 
-    pub fn on_pre_vote(&self) {}
+    pub fn on_pre_vote(&self, request: PreVoteRequest) -> PreVoteResponse {
+        todo!()
+    }
 
-    pub fn on_vote(&self) {}
+    pub fn on_vote(&self, request: RequestVoteRequest) -> RequestVoteResponse {
+        todo!()
+    }
 
-    pub fn on_append_entry(&self) {}
+    pub fn on_append_entry(&self, request: AppendEntriesRequest) -> AppendEntriesResponse {
+        todo!()
+    }
 }

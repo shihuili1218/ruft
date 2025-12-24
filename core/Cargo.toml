@@ -15,5 +15,8 @@ tokio = { version = "1.0", features = ["full"] }
 # log
 tracing = "0.1.44"
 
+# schdule
+time = "0.3.44"
+
 [build-dependencies]
 tonic-prost-build = "0.14.2"

@@ -1,8 +1,9 @@
 use crate::command::{CmdReq, CmdResp};
 use crate::config::Config;
+use crate::endpoint::Endpoint;
+use crate::meta::Meta;
 use crate::node::state::State;
 use std::path::PathBuf;
-use crate::meta::Meta;
 
 mod state;
 
@@ -13,11 +14,16 @@ struct Node {
 
 impl Node {
     pub fn start(config: Config) -> Self {
-        Node {
+        let node = Node {
             meta: Meta::new(PathBuf::new()),
             state: State::Electing,
-        }
+        };
+        node
     }
+
+    fn elect(&self) {}
+
+    pub fn update_member(endpoints: Vec<Endpoint>) {}
 
     pub fn emit(&self, command: CmdReq) -> CmdResp {
         match &self.state {
