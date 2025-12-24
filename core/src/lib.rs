@@ -1,9 +1,9 @@
-mod node;
-mod role;
-mod config;
 mod command;
-mod response;
+mod config;
 mod endpoint;
+mod node;
+mod response;
+mod role;
 
 pub fn add(left: u64, right: u64) -> u64 {
     left + right

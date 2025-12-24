@@ -1,8 +1,7 @@
-pub struct  Learner{
-}
+pub struct Learner {}
 
-impl Learner{
+impl Learner {
     pub fn new() -> Self {
-        Learner{}
+        Learner {}
     }
 }

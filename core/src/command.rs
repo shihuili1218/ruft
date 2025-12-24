@@ -5,7 +5,6 @@ pub struct Command {
     pub data: Bytes,
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;

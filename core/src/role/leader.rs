@@ -9,6 +9,8 @@ impl Leader {
     }
 
     pub(crate) fn append_entry(&self, command: Command) -> Response {
-        Response::Failure { message: String::new() }
+        Response::Failure {
+            message: String::new(),
+        }
     }
 }

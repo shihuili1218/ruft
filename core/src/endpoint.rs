@@ -1,18 +1,22 @@
+use std::fmt::{Display, Formatter};
 use std::net::{Ipv4Addr, Ipv6Addr};
 
 pub struct Endpoint {
     id: usize,
-     address: Address,
+    address: Address,
 }
 
-impl Endpoint {
-    pub fn fmt(&self) ->String{
-        let addr = match &self.address {
-            Address::Ipv4 { v4 } => String::from( v4.to_string()),
-            Address::Ipv6 { v6 } => String::from( v6.to_string()),
-            Address::Connect { host, port } => format!("{}:{}", host, port)
-        };
-        format!("[{}]:[{}]", self.id, addr)
+impl Display for Endpoint {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "[{}]:[", self.id)?;
+
+        match &self.address {
+            Address::Ipv4 { v4 } => write!(f, "{}", v4)?,
+            Address::Ipv6 { v6 } => write!(f, "{}", v6)?,
+            Address::Connect { host, port } => write!(f, "{}:{}", host, port)?,
+        }
+
+        write!(f, "]")
     }
 }
 

@@ -1,6 +1,4 @@
-pub struct Follower {
-
-}
+pub struct Follower {}
 
 impl Follower {
     pub fn new() -> Self {
@@ -12,5 +10,4 @@ impl Follower {
     pub fn on_vote(&self) {}
 
     pub fn on_append_entry(&self) {}
-
 }

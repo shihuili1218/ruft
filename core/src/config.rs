@@ -1,4 +1,3 @@
-
-pub struct Config<Endpoint>{
+pub struct Config<Endpoint> {
     endpoints: Vec<Endpoint>,
 }
