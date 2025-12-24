@@ -1,20 +1,10 @@
-use crate::endpoint::Endpoint;
+use crate::role::follower::Follower;
+use crate::role::leader::Leader;
+use crate::role::learner::Learner;
 
 pub enum State {
-    Electing {
-        nodes: Vec<Endpoint>,
-    },
-    Leading {
-        term: usize,
-        followers: Vec<Endpoint>,
-        learners: Vec<Endpoint>,
-    },
-    Following {
-        term: usize,
-        leader: Endpoint,
-    },
-    Learning {
-        term: usize,
-        leader: Endpoint,
-    },
+    Electing,
+    Leading { term: usize, leader: Leader },
+    Following { term: usize, follower: Follower },
+    Learning { term: usize, learner: Learner },
 }

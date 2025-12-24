@@ -1,10 +1,8 @@
 use crate::command::Command;
+use crate::config::Config;
 use crate::node::meta::Meta;
 use crate::node::state::State;
 use crate::response::Response;
-use crate::role::follower::Follower;
-use crate::role::leader::Leader;
-use crate::role::learner::Learner;
 use std::path::PathBuf;
 
 mod meta;
@@ -13,33 +11,27 @@ mod state;
 struct Node {
     meta: Meta,
     state: State,
-    leader: Leader,
-    follower: Follower,
-    learner: Learner,
 }
 
 impl Node {
-    pub fn new(config_path: String) -> Self {
+    pub fn start(config: Config) -> Self {
         Node {
             meta: Meta::new(PathBuf::new()),
-            state: State::Electing { nodes: Vec::new() },
-            leader: Leader::new(),
-            follower: Follower::new(),
-            learner: Learner::new(),
+            state: State::Electing,
         }
     }
 
     pub fn emit(&self, command: Command) -> Response {
         match &self.state {
-            State::Electing { .. } => Response::Failure {
+            State::Electing => Response::Failure {
                 message: String::from("Electing"),
             },
-            State::Leading { .. } => self.leader.append_entry(command),
-            State::Following { term, leader } => Response::Failure {
-                message: format!("Following, leader[{}]: {}", term, leader),
+            State::Leading { term, leader } => leader.append_entry(command),
+            State::Following { term, follower } => Response::Failure {
+                message: format!("Following, leader[{}]: {}", term, follower.leader),
             },
-            State::Learning { term, leader } => Response::Failure {
-                message: format!("Learning, leader[{}]: {}", term, leader),
+            State::Learning { term, learner } => Response::Failure {
+                message: format!("Learning, leader[{}]: {}", term, learner.leader),
             },
         }
     }

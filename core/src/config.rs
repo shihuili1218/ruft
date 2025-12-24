@@ -1,3 +1,6 @@
-pub struct Config<Endpoint> {
+use crate::endpoint::Endpoint;
+
+pub struct Config {
     endpoints: Vec<Endpoint>,
+    
 }
