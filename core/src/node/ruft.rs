@@ -3,7 +3,6 @@ use crate::endpoint::Endpoint;
 use crate::node::{Config, Node};
 use crate::rpc::server::run_server;
 use std::sync::Arc;
-use tracing::info;
 
 pub struct Ruft {
     inner: Arc<Node>,
@@ -17,13 +16,7 @@ impl Ruft {
     }
 
     pub fn start(&self) {
-        {
-            let inner = self.inner.clone();
-            let rpc_server_handle = tokio::spawn(async move { run_server(inner).await });
-            info!("Rpc server is starting");
-        }
-
-
+        let _rpc_server_handle = run_server(&self.inner);
         self.inner.start();
     }
 
