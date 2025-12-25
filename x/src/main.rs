@@ -1,8 +1,10 @@
-fn main() {
-    println!("Starting x");
-}
-
+use tracing::info;
 use tracing_subscriber::EnvFilter;
+
+fn main() {
+    info!("Starting x");
+    init_tracing()
+}
 
 fn init_tracing() {
     tracing_subscriber::fmt()

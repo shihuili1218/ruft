@@ -4,6 +4,7 @@ use std::path::PathBuf;
 pub struct Meta {
     pub term: u64,
     log_id: u64,
+    committed_index: u64,
     pub members: Vec<Endpoint>,
 }
 
@@ -12,6 +13,7 @@ impl Meta {
         Meta {
             term: 0,
             log_id: 0,
+            committed_index: 0,
             members: Vec::new(),
         }
     }

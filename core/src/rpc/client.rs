@@ -1,20 +1,42 @@
-use crate::rpc::RequestVoteRequest;
+use crate::endpoint::Endpoint;
 use crate::rpc::ruft_rpc_client::RuftRpcClient;
+use crate::rpc::{PreVoteRequest, PreVoteResponse};
+use tonic::transport::Channel;
+use tonic::transport::Endpoint as TonicEndpoint;
 
-#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut client = RuftRpcClient::connect("http://127.0.0.1:50051").await?;
+struct RpcClient {
+    client: RuftRpcClient<Channel>,
+}
 
-    let resp = client
-        .request_vote(RequestVoteRequest {
-            term: 1,
-            candidate_id: 2,
-            last_log_index: 10,
-            last_log_term: 1,
-        })
-        .await?;
+impl RpcClient {
+    async fn connect(endpoint: &Endpoint) -> Result<Self, Box<dyn std::error::Error>> {
+        let channel = TonicEndpoint::from_shared(endpoint.url.clone())?
+            .connect()
+            .await?;
+        let client = RuftRpcClient::new(channel);
+        Ok(RpcClient { client })
+    }
 
-    println!("vote granted = {}", resp.into_inner().vote_granted);
+    async fn close(&self) -> Result<(), Box<dyn std::error::Error>> {
+        Ok(())
+    }
 
-    Ok(())
+    async fn pre_vote(
+        &mut self,
+        term: u64,
+        candidate_id: u64,
+        last_log_id: u64,
+        last_log_term: u64,
+    ) -> Result<PreVoteResponse, Box<dyn std::error::Error>> {
+        let resp = self
+            .client
+            .pre_vote(PreVoteRequest {
+                term,
+                candidate_id,
+                last_log_index: last_log_id,
+                last_log_term,
+            })
+            .await?;
+        Ok(resp.into_inner())
+    }
 }

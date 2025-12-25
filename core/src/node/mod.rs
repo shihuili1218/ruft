@@ -2,14 +2,13 @@ use crate::command::{CmdReq, CmdResp};
 use crate::config::Config;
 use crate::endpoint::Endpoint;
 use crate::meta::Meta;
-use crate::node::state::State;
+use crate::role::state::State;
 use std::path::PathBuf;
+use crate::rpc::server::start_server;
 
-mod state;
-
-struct Node {
+pub struct Node {
     meta: Meta,
-    state: State,
+    pub state: State,
 }
 
 impl Node {
@@ -18,10 +17,13 @@ impl Node {
             meta: Meta::new(PathBuf::new()),
             state: State::Electing,
         };
+        start_server(node);
         node
     }
 
-    fn elect(&self) {}
+    fn elect(&self) {
+
+    }
 
     pub fn update_member(endpoints: Vec<Endpoint>) {}
 

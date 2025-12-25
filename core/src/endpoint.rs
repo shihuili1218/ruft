@@ -4,9 +4,8 @@ use std::net::{Ipv4Addr, Ipv6Addr};
 pub struct Endpoint {
     id: usize,
     address: Address,
+    pub url: String
 }
-
-impl Endpoint {}
 
 impl Display for Endpoint {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {

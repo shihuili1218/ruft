@@ -1,3 +1,3 @@
 mod client;
-mod server;
+pub mod server;
 tonic::include_proto!("ruft");
