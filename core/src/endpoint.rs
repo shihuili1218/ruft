@@ -6,9 +6,7 @@ pub struct Endpoint {
     address: Address,
 }
 
-impl Endpoint {
-    
-}
+impl Endpoint {}
 
 impl Display for Endpoint {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {

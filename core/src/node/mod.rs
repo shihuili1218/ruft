@@ -13,7 +13,7 @@ struct Node {
 }
 
 impl Node {
-    pub fn start(config: Config) -> Self {
+    pub fn spawn(config: Config) -> Self {
         let node = Node {
             meta: Meta::new(PathBuf::new()),
             state: State::Electing,

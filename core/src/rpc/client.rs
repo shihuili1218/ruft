@@ -1,5 +1,5 @@
-use crate::rpc::ruft_rpc_client::RuftRpcClient;
 use crate::rpc::RequestVoteRequest;
+use crate::rpc::ruft_rpc_client::RuftRpcClient;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

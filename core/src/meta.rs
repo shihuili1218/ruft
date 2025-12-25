@@ -17,7 +17,7 @@ impl Meta {
     }
 
     pub fn next_log_id(&mut self) -> u64 {
-        self.log_id = self.log_id + 1;
+        self.log_id += 1;
         self.log_id
     }
 }

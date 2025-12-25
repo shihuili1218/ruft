@@ -11,7 +11,6 @@ pub enum CmdResp {
     Unknown { log_id: usize },
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -31,5 +30,3 @@ mod tests {
         assert_eq!(cmd.data, cmd_clone.data);
     }
 }
-
-

@@ -1,11 +1,11 @@
 mod command;
 mod config;
 mod endpoint;
+mod meta;
 mod node;
+mod repeat_timer;
 mod role;
 mod rpc;
-mod meta;
-mod repeat_timer;
 
 pub fn add(left: u64, right: u64) -> u64 {
     left + right
