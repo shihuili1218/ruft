@@ -57,6 +57,7 @@ impl Node {
 
     pub fn start(self: &Arc<Self>) {
         self.init_timer();
+        self.timer.wait().restart_elect()
     }
 
     fn init_timer(self: &Arc<Self>) {

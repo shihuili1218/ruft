@@ -16,7 +16,11 @@ impl Ruft {
     }
 
     pub fn start(&self) {
-        let _rpc_server_handle = run_server(&self.inner);
+        if let Ok(rt) = tokio::runtime::Runtime::new() {
+            rt.block_on(async {
+                let _rpc_server_handle = run_server(&self.inner).await;
+            });
+        }
         self.inner.start();
     }
 

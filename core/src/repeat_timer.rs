@@ -119,6 +119,31 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_stop() {
+        let counter = Arc::new(Mutex::new(0));
+        let counter_clone = counter.clone();
+
+        let timer = RepeatTimer::new(
+            "stop_timer".to_string(),
+            Box::new(|| Duration::from_millis(100)),
+            Box::new(move || {
+                let mut count = counter_clone.lock().unwrap();
+                *count += 1;
+            }),
+        );
+
+        let handle = timer.spawn();
+
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        handle.stop();
+        handle.stop();
+
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert_eq!(*counter.lock().unwrap(), 0);
+    }
+
+
+    #[tokio::test]
     async fn test_dynamic_delay() {
         let counter = Arc::new(Mutex::new(0));
         let counter_clone = counter.clone();

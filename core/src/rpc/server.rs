@@ -8,18 +8,15 @@ use std::sync::Arc;
 use tonic::{Request, Response, Status};
 use tracing::info;
 
-pub fn run_server(node: &Arc<Node>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+pub async fn run_server(node: &Arc<Node>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let  node = node.clone();
     let addr = "127.0.0.1:1218".parse()?;
     info!("Rpc server is starting");
-    
-    tokio::spawn(async move {
-        tonic::transport::Server::builder()
-            .add_service(RuftRpcServer::new(node))
-            .serve(addr)
-            .await.expect("Rpc server start fail");
-    });
-
+    tonic::transport::Server::builder()
+        .add_service(RuftRpcServer::new(node))
+        .serve(addr)
+        .await?;
+    info!("Rpc server is started");
     Ok(())
 }
 
