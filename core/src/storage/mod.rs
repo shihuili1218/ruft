@@ -1,4 +1,3 @@
-use crate::node::meta::Meta;
 use memmap2::MmapMut;
 use std::fs::OpenOptions;
 use std::path::PathBuf;
@@ -15,16 +14,7 @@ impl MmapStorage {
             .create(true)
             .open(path)?;
         file.set_len(size)?;
-        let mut mmap = unsafe { MmapMut::map_mut(&file)? };
-
-        unsafe {
-            let meta = &mut *(mmap.as_mut_ptr() as *mut Meta);
-            meta.term = 0;
-            meta.log_id = 0;
-            meta.committed_index = 0;
-            meta.members = Vec::new();
-        }
-
+        let mmap = unsafe { MmapMut::map_mut(&file)? };
         Ok(Self { mmap })
     }
 
@@ -52,6 +42,14 @@ impl MmapStorage {
         }
     }
 
+    pub fn with_ref<T, R>(&self, f: impl FnOnce(&T) -> R) -> R {
+        unsafe {
+            // debug_assert_eq!((self.mmap.as_ptr() as usize) % align_of::<T>(), 0);
+            let ptr = self.mmap.as_ptr() as *const T;
+            f(&*ptr)
+        }
+    }
+
     pub fn flush(&self) -> std::io::Result<()> {
         self.mmap.flush()
     }
@@ -61,6 +59,12 @@ impl MmapStorage {
 mod tests {
     use super::*;
 
+    struct Meta {
+        unfamiliar: bool,
+        term: u64,
+        log_id: u64,
+        committed_index: u64,
+    }
     #[test]
     fn it_works() {
         let path = PathBuf::from("/tmp/raft/meta.bin");
@@ -71,13 +75,16 @@ mod tests {
 
         let log_id = store.with_mut::<Meta, _>(|meta| {
             meta.term += 1;
-            meta.next_log_id()
+            meta.log_id += 1;
+            meta.log_id
         });
         assert_eq!(log_id, 1);
 
         let term = store.with_mut::<Meta, _>(|meta| meta.term);
         assert_eq!(term, 1);
 
+        let unfamiliar = store.with_ref::<Meta, _>(|meta| meta.unfamiliar);
+        println!("{:?}", unfamiliar);
         store.flush().unwrap();
     }
 }

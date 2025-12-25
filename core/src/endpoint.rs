@@ -4,7 +4,7 @@ use std::net::{Ipv4Addr, Ipv6Addr};
 pub struct Endpoint {
     id: usize,
     address: Address,
-    pub url: String
+    pub url: String,
 }
 
 impl Display for Endpoint {

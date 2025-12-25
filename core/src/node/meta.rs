@@ -1,29 +1,59 @@
+use crate::Config;
 use crate::endpoint::Endpoint;
+use crate::storage::MmapStorage;
+use std::fmt::{Display, Formatter};
 use std::path::PathBuf;
 
 #[repr(C)]
-pub struct Meta {
-    pub term: u64,
-    pub log_id: u64,
-    pub committed_index: u64,
-    pub members: Vec<Endpoint>,
+struct Meta {
+    unfamiliar: bool,
+    term: u64,
+    log_id: u64,
+    committed_index: u64,
+    members: Vec<Endpoint>,
 }
-
-impl Meta {
-
-
-
-    pub fn read_or_create(path: PathBuf) -> Self {
-        Meta {
-            term: 0,
-            log_id: 0,
-            committed_index: 0,
-            members: Vec::new(),
+pub(super) struct MetaHolder {
+    storage: MmapStorage,
+}
+impl MetaHolder {
+    pub fn new(config: Config) -> Self {
+        let path = format!("{}/meta.bin", config.data_dir);
+        let meta_path = PathBuf::from(&path);
+        let mut meta_store = MmapStorage::open_or_create(meta_path, 1024)
+            .expect(format!("open meta file fail, {}", path).as_str());
+        meta_store.with_mut::<Meta, _>(|meta| {
+            if meta.unfamiliar {
+                meta.unfamiliar = true;
+                meta.term = 0;
+                meta.log_id = 0;
+                meta.committed_index = 0;
+                meta.members = config.origin_endpoint
+            }
+        });
+        let _result = meta_store.flush();
+        MetaHolder {
+            storage: meta_store,
         }
     }
 
     pub fn next_log_id(&mut self) -> u64 {
-        self.log_id += 1;
-        self.log_id
+        self.storage.with_mut::<Meta, _>(|meta| {
+            meta.log_id += 1;
+            meta.log_id
+        })
+    }
+
+    pub fn term(&self) -> u64 {
+        self.storage.with_ref::<Meta, _>(|meta| meta.term)
+    }
+
+    pub fn log_id(&self) -> u64 {
+        self.storage.with_ref::<Meta, _>(|meta| meta.log_id)
+    }
+}
+
+impl Display for MetaHolder {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "[{}]:[id:{}]", self.term(), self.log_id())
     }
 }

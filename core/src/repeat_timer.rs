@@ -44,7 +44,10 @@ impl RepeatTimer {
             }
         });
 
-        RepeatTimerHandle { restart_tx, stop_tx }
+        RepeatTimerHandle {
+            restart_tx,
+            stop_tx,
+        }
     }
 }
 
@@ -141,7 +144,6 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(100)).await;
         assert_eq!(*counter.lock().unwrap(), 0);
     }
-
 
     #[tokio::test]
     async fn test_dynamic_delay() {

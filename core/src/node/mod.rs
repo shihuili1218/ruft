@@ -1,143 +1,59 @@
-pub mod ruft;
-pub(crate) mod meta;
+pub mod meta;
+pub mod node;
 
 use crate::command::{CmdReq, CmdResp};
 use crate::endpoint::Endpoint;
-use crate::repeat_timer::{RepeatTimer, RepeatTimerHandle};
-use crate::role::state::State;
-use std::path::PathBuf;
-use std::sync::{Arc, Mutex, OnceLock};
-use std::time::Duration;
-use crate::node::meta::Meta;
+use crate::node::node::Node;
+use crate::rpc::server::run_server;
+use std::sync::Arc;
 
-struct Timer {
-    send_heartbeat_timer: RepeatTimerHandle,
-    wait_heartbeat_timer: RepeatTimerHandle,
-    elect_timer: RepeatTimerHandle,
+pub struct Ruft {
+    inner: Arc<Node>,
 }
 
-impl Timer {
-    fn restart_wait_hb(&self) {
-        self.send_heartbeat_timer.stop();
-        self.wait_heartbeat_timer.stop();
-        self.elect_timer.stop();
-        self.wait_heartbeat_timer.restart();
-    }
-
-    fn restart_send_hb(&self) {
-        self.send_heartbeat_timer.stop();
-        self.wait_heartbeat_timer.stop();
-        self.elect_timer.stop();
-        self.send_heartbeat_timer.restart();
-    }
-
-    fn restart_elect(&self) {
-        self.send_heartbeat_timer.stop();
-        self.wait_heartbeat_timer.stop();
-        self.elect_timer.stop();
-        self.elect_timer.restart();
-    }
-}
-
-pub(crate) struct Node {
-    id: u64,
-    meta: Mutex<Meta>,
-    pub state: Mutex<State>,
-    timer: OnceLock<Timer>,
-}
-
-impl Node {
+impl Ruft {
     pub fn new(config: Config) -> Self {
-        let meta = Meta::read_or_create(config.data_dir);
-
-        Node {
-            id: 0,
-            meta: Mutex::new(meta),
-            state: Mutex::new(State::Electing),
-            timer: OnceLock::new(),
+        Ruft {
+            inner: Arc::new(Node::new(config)),
         }
     }
 
-    pub fn start(self: &Arc<Self>) {
-        self.init_timer();
-        self.timer.wait().restart_elect()
+    pub fn start(&self) {
+        if let Ok(rt) = tokio::runtime::Runtime::new() {
+            rt.block_on(async {
+                let _rpc_server_handle = run_server(&self.inner).await;
+            });
+        }
+        self.inner.start();
     }
 
-    fn init_timer(self: &Arc<Self>) {
-        let node_for_send_hb = self.clone();
-        let send_heartbeat_timer = RepeatTimer::new(
-            "send_heartbeat".to_string(),
-            Box::new(|| Duration::from_millis(100)),
-            Box::new(move || {
-                node_for_send_hb.send_heartbeat();
-            }),
-        )
-        .spawn();
-
-        let node_for_wait_hb = self.clone();
-        let wait_heartbeat_timer = RepeatTimer::new(
-            "wait_heartbeat".to_string(),
-            Box::new(|| Duration::from_millis(100)),
-            Box::new(move || {
-                if let Some(timer) = node_for_wait_hb.timer.get() {
-                    timer.restart_elect();
-                }
-            }),
-        )
-        .spawn();
-
-        let node_for_elect = self.clone();
-        let elect_timer = RepeatTimer::new(
-            "elect".to_string(),
-            Box::new(|| Duration::from_millis(100)),
-            Box::new(move || {
-                node_for_elect.elect();
-            }),
-        )
-        .spawn();
-
-        let _ = self.timer.set(Timer {
-            send_heartbeat_timer,
-            wait_heartbeat_timer,
-            elect_timer,
-        });
-    }
-
-    fn elect(&self) {}
-
-    fn send_heartbeat(&self) {}
-
-    pub fn update_member(&self, _endpoints: Vec<Endpoint>) {
-        // TODO: 实现更新成员逻辑
+    pub fn update_member(&self, endpoints: Vec<Endpoint>) {
+        self.inner.update_member(endpoints);
     }
 
     pub fn emit(&self, cmd: CmdReq) -> CmdResp {
-        let state = self.state.lock().unwrap();
-        match &*state {
-            State::Electing => CmdResp::Failure {
-                message: String::from("Electing"),
-            },
-            State::Leading { term: _, leader } => leader.append_entry(cmd),
-            State::Following { term, follower } => CmdResp::Failure {
-                message: format!("Following, leader[{}]: {}", term, follower.leader),
-            },
-            State::Learning { term, learner } => CmdResp::Failure {
-                message: format!("Learning, leader[{}]: {}", term, learner.leader),
-            },
+        self.inner.emit(cmd)
+    }
+}
+
+impl Clone for Ruft {
+    fn clone(&self) -> Self {
+        Ruft {
+            inner: self.inner.clone(),
         }
     }
 }
 
 pub struct Config {
     origin_endpoint: Vec<Endpoint>,
-    data_dir: PathBuf,
+    data_dir: String,
 }
 
 impl Config {
     pub fn new(endpoints: Vec<Endpoint>) -> Self {
         Config {
             origin_endpoint: endpoints,
-            data_dir: PathBuf::new(),
+            data_dir: String::from("/tmp/ruft"),
         }
     }
 }

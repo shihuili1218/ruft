@@ -6,7 +6,6 @@ mod role;
 mod rpc;
 mod storage;
 
-pub use node::ruft::Ruft;
 pub use node::Config;
 
 pub fn add(left: u64, right: u64) -> u64 {

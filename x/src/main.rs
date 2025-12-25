@@ -1,14 +1,14 @@
 use bytes::Bytes;
 use core::command::CmdReq;
-use core::node::ruft::Ruft;
 use core::node::Config;
+use core::node::Ruft;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
 fn main() {
     init_tracing();
-
     info!("Starting x");
+
     let config = Config::new(vec![]);
     let ruft = Ruft::new(config);
     ruft.start();
