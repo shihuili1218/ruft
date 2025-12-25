@@ -1,10 +1,10 @@
 pub mod command;
 mod endpoint;
-mod meta;
 pub mod node;
 mod repeat_timer;
 mod role;
 mod rpc;
+mod storage;
 
 pub use node::ruft::Ruft;
 pub use node::Config;

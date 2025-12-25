@@ -1,15 +1,19 @@
 use crate::endpoint::Endpoint;
 use std::path::PathBuf;
 
+#[repr(C)]
 pub struct Meta {
     pub term: u64,
-    log_id: u64,
-    committed_index: u64,
+    pub log_id: u64,
+    pub committed_index: u64,
     pub members: Vec<Endpoint>,
 }
 
 impl Meta {
-    pub fn new(path_buf: PathBuf) -> Self {
+
+
+
+    pub fn read_or_create(path: PathBuf) -> Self {
         Meta {
             term: 0,
             log_id: 0,

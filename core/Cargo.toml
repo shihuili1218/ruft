@@ -18,5 +18,8 @@ tracing = "0.1.44"
 # schdule
 time = "0.3.44"
 
+memmap2 = "0.9.9"
+
+
 [build-dependencies]
 tonic-prost-build = "0.14.2"

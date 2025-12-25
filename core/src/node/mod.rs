@@ -1,13 +1,14 @@
 pub mod ruft;
+pub(crate) mod meta;
 
 use crate::command::{CmdReq, CmdResp};
 use crate::endpoint::Endpoint;
-use crate::meta::Meta;
 use crate::repeat_timer::{RepeatTimer, RepeatTimerHandle};
 use crate::role::state::State;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
+use crate::node::meta::Meta;
 
 struct Timer {
     send_heartbeat_timer: RepeatTimerHandle,
@@ -46,10 +47,12 @@ pub(crate) struct Node {
 }
 
 impl Node {
-    pub fn new(_config: Config) -> Self {
+    pub fn new(config: Config) -> Self {
+        let meta = Meta::read_or_create(config.data_dir);
+
         Node {
             id: 0,
-            meta: Mutex::new(Meta::new(PathBuf::new())),
+            meta: Mutex::new(meta),
             state: Mutex::new(State::Electing),
             timer: OnceLock::new(),
         }
@@ -127,12 +130,14 @@ impl Node {
 
 pub struct Config {
     origin_endpoint: Vec<Endpoint>,
+    data_dir: PathBuf,
 }
 
 impl Config {
     pub fn new(endpoints: Vec<Endpoint>) -> Self {
         Config {
             origin_endpoint: endpoints,
+            data_dir: PathBuf::new(),
         }
     }
 }
