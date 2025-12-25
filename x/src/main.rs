@@ -1,6 +1,7 @@
 use bytes::Bytes;
 use core::command::CmdReq;
-use core::node::{Config, Node};
+use core::node::ruft::Ruft;
+use core::node::Config;
 use tracing::info;
 use tracing_subscriber::EnvFilter;
 
@@ -9,13 +10,13 @@ fn main() {
 
     info!("Starting x");
     let config = Config::new(vec![]);
-    let node = Node::new(config);
-    node.start();
+    let ruft = Ruft::new(config);
+    ruft.start();
     let req = CmdReq {
         id: "cmd_789".to_string(),
         data: Bytes::from(b"network_data".to_vec()),
     };
-    node.emit(req);
+    ruft.emit(req);
 }
 
 fn init_tracing() {

@@ -6,6 +6,9 @@ mod repeat_timer;
 mod role;
 mod rpc;
 
+pub use node::ruft::Ruft;
+pub use node::Config;
+
 pub fn add(left: u64, right: u64) -> u64 {
     left + right
 }

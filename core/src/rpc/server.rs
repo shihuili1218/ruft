@@ -1,4 +1,4 @@
-use crate::node::ruft::Ruft;
+use crate::node::Node;
 use crate::rpc::ruft_rpc_server::{RuftRpc, RuftRpcServer};
 use crate::rpc::{
     AppendEntriesRequest, AppendEntriesResponse, PreVoteRequest, PreVoteResponse,
@@ -7,7 +7,7 @@ use crate::rpc::{
 use std::sync::Arc;
 use tonic::{Request, Response, Status};
 
-pub async fn run_server(node: Arc<Ruft>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+pub async fn run_server(node: Arc<Node>) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let addr = "127.0.0.1:1218".parse()?;
     tonic::transport::Server::builder()
         .add_service(RuftRpcServer::new(node))
@@ -17,7 +17,7 @@ pub async fn run_server(node: Arc<Ruft>) -> Result<(), Box<dyn std::error::Error
 }
 
 #[tonic::async_trait]
-impl RuftRpc for Arc<Ruft> {
+impl RuftRpc for Arc<Node> {
     async fn pre_vote(
         &self,
         request: Request<PreVoteRequest>,
