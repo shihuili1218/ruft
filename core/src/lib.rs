@@ -1,8 +1,7 @@
-mod command;
-mod config;
+pub mod command;
 mod endpoint;
 mod meta;
-mod node;
+pub mod node;
 mod repeat_timer;
 mod role;
 mod rpc;
