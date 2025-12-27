@@ -1,6 +1,6 @@
 use std::fmt::{Display, Formatter};
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Endpoint {
     id: usize,
     address: Address,
@@ -9,12 +9,11 @@ pub struct Endpoint {
 
 impl Endpoint {
     pub fn new(id: usize, address: Address) -> Self {
-        let host = &address.host;
-        let port = address.port;
+        let url = format!("http://{}:{}", address.host, address.port);
         Endpoint {
             id,
             address,
-            url: format!("http://{}:{}", host, port),
+            url,
         }
     }
 }
@@ -27,7 +26,7 @@ impl Display for Endpoint {
     }
 }
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Address {
     host: String,
     port: u16,

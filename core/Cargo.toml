@@ -19,7 +19,8 @@ tracing = "0.1.44"
 time = "0.3.44"
 
 memmap2 = "0.9.9"
-rand = "0.10.0-rc.5"
+rand = "0.8"
+dashmap = "6.1.0"
 
 
 [build-dependencies]

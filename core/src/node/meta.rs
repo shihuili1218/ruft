@@ -59,8 +59,8 @@ impl MetaHolder {
         self.storage.with_ref::<Meta, _>(|meta| meta.committed_index)
     }
 
-    pub fn members(&self) -> &[Endpoint] {
-        self.storage.with_ref(|meta| &meta.members)
+    pub fn members(&self) -> Vec<Endpoint> {
+        self.storage.with_ref(|meta: &Meta| meta.members.clone())
     }
 }
 
