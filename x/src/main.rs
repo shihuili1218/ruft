@@ -1,5 +1,6 @@
 use bytes::Bytes;
 use core::command::CmdReq;
+use core::endpoint::{Address, Endpoint};
 use core::node::Config;
 use core::node::Ruft;
 use tracing::info;
@@ -10,7 +11,8 @@ fn main() {
     info!("Starting x");
 
     let config = Config::new(vec![]);
-    let ruft = Ruft::new(config);
+    let me = Endpoint::new(0, Address::new("".to_string(), 0));
+    let ruft = Ruft::new(me, config);
     ruft.start();
     let req = CmdReq {
         id: "cmd_789".to_string(),

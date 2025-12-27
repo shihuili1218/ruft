@@ -8,11 +8,7 @@ pub struct MmapStorage {
 
 impl MmapStorage {
     fn create(path: PathBuf, size: u64) -> std::io::Result<Self> {
-        let file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .open(path)?;
+        let file = OpenOptions::new().read(true).write(true).create(true).open(path)?;
         file.set_len(size)?;
         let mmap = unsafe { MmapMut::map_mut(&file)? };
         Ok(Self { mmap })

@@ -1,5 +1,5 @@
 pub mod command;
-mod endpoint;
+pub mod endpoint;
 pub mod node;
 mod repeat_timer;
 mod role;

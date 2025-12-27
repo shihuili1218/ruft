@@ -9,16 +9,10 @@ pub struct Leader {
 
 impl Leader {
     pub fn new(endpoint: Endpoint, followers: Vec<Endpoint>, learners: Vec<Endpoint>) -> Self {
-        Leader {
-            endpoint,
-            followers,
-            learners,
-        }
+        Leader { endpoint, followers, learners }
     }
 
     pub fn append_entry(&self, command: CmdReq) -> CmdResp {
-        CmdResp::Failure {
-            message: String::new(),
-        }
+        CmdResp::Failure { message: String::new() }
     }
 }

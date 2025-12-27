@@ -4,7 +4,6 @@ pub mod node;
 use crate::command::{CmdReq, CmdResp};
 use crate::endpoint::Endpoint;
 use crate::node::node::Node;
-use crate::rpc::server::run_server;
 use std::sync::Arc;
 
 pub struct Ruft {
@@ -12,18 +11,13 @@ pub struct Ruft {
 }
 
 impl Ruft {
-    pub fn new(config: Config) -> Self {
+    pub fn new(me: Endpoint, config: Config) -> Self {
         Ruft {
-            inner: Arc::new(Node::new(config)),
+            inner: Arc::new(Node::new(me, config)),
         }
     }
 
     pub fn start(&self) {
-        if let Ok(rt) = tokio::runtime::Runtime::new() {
-            rt.block_on(async {
-                let _rpc_server_handle = run_server(&self.inner).await;
-            });
-        }
         self.inner.start();
     }
 
@@ -38,15 +32,14 @@ impl Ruft {
 
 impl Clone for Ruft {
     fn clone(&self) -> Self {
-        Ruft {
-            inner: self.inner.clone(),
-        }
+        Ruft { inner: self.inner.clone() }
     }
 }
 
 pub struct Config {
     origin_endpoint: Vec<Endpoint>,
     data_dir: String,
+    heartbeat_interval_millis: u64,
 }
 
 impl Config {
@@ -54,6 +47,7 @@ impl Config {
         Config {
             origin_endpoint: endpoints,
             data_dir: String::from("/tmp/ruft"),
+            heartbeat_interval_millis: 3000,
         }
     }
 }

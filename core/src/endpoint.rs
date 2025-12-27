@@ -1,28 +1,40 @@
 use std::fmt::{Display, Formatter};
-use std::net::{Ipv4Addr, Ipv6Addr};
 
+#[derive(Clone, PartialEq, Eq)]
 pub struct Endpoint {
     id: usize,
     address: Address,
     pub url: String,
 }
 
+impl Endpoint {
+    pub fn new(id: usize, address: Address) -> Self {
+        let host = &address.host;
+        let port = address.port;
+        Endpoint {
+            id,
+            address,
+            url: format!("http://{}:{}", host, port),
+        }
+    }
+}
+
 impl Display for Endpoint {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "[{}]:[", self.id)?;
-
-        match &self.address {
-            Address::Ipv4 { v4 } => write!(f, "{}", v4)?,
-            Address::Ipv6 { v6 } => write!(f, "{}", v6)?,
-            Address::Connect { host, port } => write!(f, "{}:{}", host, port)?,
-        }
-
+        write!(f, "{}:{}", self.address.host, self.address.port)?;
         write!(f, "]")
     }
 }
 
-enum Address {
-    Ipv4 { v4: Ipv4Addr },
-    Ipv6 { v6: Ipv6Addr },
-    Connect { host: String, port: u16 },
+#[derive(Clone, PartialEq, Eq)]
+pub struct Address {
+    host: String,
+    port: u16,
+}
+
+impl Address {
+    pub fn new(host: String, port: u16) -> Self {
+        Address { host, port }
+    }
 }

@@ -12,11 +12,7 @@ pub(crate) struct RepeatTimerHandle {
 }
 
 impl RepeatTimer {
-    pub fn new(
-        name: String,
-        delay: Box<dyn Fn() -> Duration + Send + Sync>,
-        task: Box<dyn Fn() + Send + Sync>,
-    ) -> Self {
+    pub fn new(name: String, delay: Box<dyn Fn() -> Duration + Send + Sync>, task: Box<dyn Fn() + Send + Sync>) -> Self {
         RepeatTimer { name, delay, task }
     }
 
@@ -44,10 +40,7 @@ impl RepeatTimer {
             }
         });
 
-        RepeatTimerHandle {
-            restart_tx,
-            stop_tx,
-        }
+        RepeatTimerHandle { restart_tx, stop_tx }
     }
 }
 
