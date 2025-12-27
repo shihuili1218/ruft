@@ -1,6 +1,6 @@
-use crate::Config;
 use crate::endpoint::Endpoint;
 use crate::storage::MmapStorage;
+use crate::Config;
 use std::fmt::{Display, Formatter};
 use std::path::PathBuf;
 
@@ -12,9 +12,11 @@ struct Meta {
     committed_index: u64,
     members: Vec<Endpoint>,
 }
+
 pub(super) struct MetaHolder {
     storage: MmapStorage,
 }
+
 impl MetaHolder {
     pub fn new(config: &Config) -> Self {
         let path = format!("{}/meta.bin", config.data_dir);

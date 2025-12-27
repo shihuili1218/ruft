@@ -17,13 +17,13 @@ tonic::include_proto!("ruft");
 pub async fn run_server(node: Arc<Node>) -> Result<(), Box<dyn Error + Send + Sync>> {
     let addr = "127.0.0.1:1218".parse()?;
     info!("Rpc server is starting");
-    tonic::transport::Server::builder().add_service(RuftRpcServer::new(node)).serve(addr).await?;
+    tonic::transport::Server::builder().add_service(RuftRpcServer::from_arc(node)).serve(addr).await?;
     info!("Rpc server is started");
     Ok(())
 }
 
 #[tonic::async_trait]
-impl RuftRpc for Arc<Node> {
+impl RuftRpc for Node {
     async fn pre_vote(&self, request: Request<PreVoteRequest>) -> Result<Response<PreVoteResponse>, Status> {
         todo!()
     }

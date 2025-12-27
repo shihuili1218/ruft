@@ -14,7 +14,7 @@ use std::time::Duration;
 pub(crate) struct Node {
     meta: Mutex<MetaHolder>,
     me: Endpoint,
-    remote_clients: DashMap<Endpoint, Arc<RemoteClient>>,
+    remote_clients: DashMap<Endpoint, RemoteClient>,
 
     config: Config,
     pub state: RwLock<State>,
@@ -97,7 +97,7 @@ impl Node {
 
                 match init_remote_client(&endpoint).await {
                     Ok(client) => {
-                        node.remote_clients.insert(endpoint.clone(), Arc::new(client));
+                        node.remote_clients.insert(endpoint.clone(), client);
                     }
                     Err(e) => {
                         eprintln!("Failed to init remote client for {}: {}", endpoint, e);
