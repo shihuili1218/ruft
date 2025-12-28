@@ -17,16 +17,16 @@ impl Ruft {
         }
     }
 
-    pub fn start(&self) {
-        self.inner.start();
+    pub async fn start(&self) {
+        self.inner.start().await;
     }
 
-    pub fn update_member(&self, endpoints: Vec<Endpoint>) {
+    pub async fn update_member(&self, endpoints: Vec<Endpoint>) {
         self.inner.update_member(endpoints);
     }
 
-    pub fn emit(&self, cmd: CmdReq) -> CmdResp {
-        self.inner.emit(cmd)
+    pub async fn emit(&self, cmd: CmdReq) -> CmdResp {
+        self.inner.emit(cmd).await
     }
 }
 

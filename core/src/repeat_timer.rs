@@ -1,9 +1,19 @@
+use std::future::Future;
+use std::pin::Pin;
 use tokio::time::Duration;
+
+/// Trait for tasks that need to be executed repeatedly
+pub(crate) trait RepeatTask: Send + Sync {
+    /// Calculate the delay before next execution
+    fn delay(&self) -> Pin<Box<dyn Future<Output = Duration> + Send + '_>>;
+
+    /// Execute the task
+    fn run(&self) -> Pin<Box<dyn Future<Output = ()> + Send + '_>>;
+}
 
 pub(crate) struct RepeatTimer {
     name: String,
-    delay: Box<dyn Fn() -> Duration + Send + Sync>,
-    task: Box<dyn Fn() + Send + Sync>,
+    task: Box<dyn RepeatTask>,
 }
 
 pub(crate) struct RepeatTimerHandle {
@@ -12,8 +22,20 @@ pub(crate) struct RepeatTimerHandle {
 }
 
 impl RepeatTimer {
-    pub fn new(name: String, delay: Box<dyn Fn() -> Duration + Send + Sync>, task: Box<dyn Fn() + Send + Sync>) -> Self {
-        RepeatTimer { name, delay, task }
+    pub fn new(name: String, task: Box<dyn RepeatTask>) -> Self {
+        RepeatTimer { name, task }
+    }
+
+    /// Create a timer from closures (for simple cases)
+    pub fn from_fns<D, R>(name: String, delay_fn: D, run_fn: R) -> Self
+    where
+        D: Fn() -> Pin<Box<dyn Future<Output = Duration> + Send>> + Send + Sync + 'static,
+        R: Fn() -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync + 'static,
+    {
+        RepeatTimer {
+            name,
+            task: Box::new(FnTask { delay_fn, run_fn }),
+        }
     }
 
     pub fn spawn(self) -> RepeatTimerHandle {
@@ -22,18 +44,16 @@ impl RepeatTimer {
 
         tokio::spawn(async move {
             loop {
-                let delay = (self.delay)();
+                let delay = self.task.delay().await;
 
                 tokio::select! {
                     _ = tokio::time::sleep(delay) => {
-                        (self.task)();
+                        self.task.run().await;
                     }
                     Some(_) = restart_rx.recv() => {
-                        // 重启：取消当前sleep，重新计算delay
                         continue;
                     }
                     Some(_) = stop_rx.recv() => {
-                        // 停止：退出loop
                         break;
                     }
                 }
@@ -54,6 +74,26 @@ impl RepeatTimerHandle {
     }
 }
 
+/// Internal task implementation using closures
+struct FnTask<D, R> {
+    delay_fn: D,
+    run_fn: R,
+}
+
+impl<D, R> RepeatTask for FnTask<D, R>
+where
+    D: Fn() -> Pin<Box<dyn Future<Output = Duration> + Send>> + Send + Sync,
+    R: Fn() -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync,
+{
+    fn delay(&self) -> Pin<Box<dyn Future<Output = Duration> + Send + '_>> {
+        (self.delay_fn)()
+    }
+
+    fn run(&self) -> Pin<Box<dyn Future<Output = ()> + Send + '_>> {
+        (self.run_fn)()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -64,14 +104,17 @@ mod tests {
         let counter = Arc::new(Mutex::new(0));
         let counter_clone = counter.clone();
 
-        let timer = RepeatTimer::new(
+        let timer = RepeatTimer::from_fns(
             "test_timer".to_string(),
-            Box::new(|| Duration::from_millis(100)),
-            Box::new(move || {
-                let mut count = counter_clone.lock().unwrap();
-                *count += 1;
-                println!("Task executed, count: {}", *count);
-            }),
+            || Box::pin(async { Duration::from_millis(100) }),
+            move || {
+                let counter_clone = counter_clone.clone();
+                Box::pin(async move {
+                    let mut count = counter_clone.lock().unwrap();
+                    *count += 1;
+                    println!("Task executed, count: {}", *count);
+                })
+            },
         );
 
         let handle = timer.spawn();
@@ -90,13 +133,17 @@ mod tests {
         let counter = Arc::new(Mutex::new(0));
         let counter_clone = counter.clone();
 
-        let timer = RepeatTimer::new(
+        let timer = RepeatTimer::from_fns(
             "restart_timer".to_string(),
-            Box::new(|| Duration::from_millis(100)),
-            Box::new(move || {
-                let mut count = counter_clone.lock().unwrap();
-                *count += 1;
-            }),
+            || Box::pin(async { Duration::from_millis(100) }),
+            move || {
+                let counter_clone = counter_clone.clone();
+                Box::pin(async move {
+                    let mut count = counter_clone.lock().unwrap();
+                    *count += 1;
+                    println!("Task executed, count: {}", *count);
+                })
+            },
         );
 
         let handle = timer.spawn();
@@ -119,13 +166,17 @@ mod tests {
         let counter = Arc::new(Mutex::new(0));
         let counter_clone = counter.clone();
 
-        let timer = RepeatTimer::new(
+        let timer = RepeatTimer::from_fns(
             "stop_timer".to_string(),
-            Box::new(|| Duration::from_millis(100)),
-            Box::new(move || {
-                let mut count = counter_clone.lock().unwrap();
-                *count += 1;
-            }),
+            || Box::pin(async { Duration::from_millis(100) }),
+            move || {
+                let counter_clone = counter_clone.clone();
+                Box::pin(async move {
+                    let mut count = counter_clone.lock().unwrap();
+                    *count += 1;
+                    println!("Task executed, count: {}", *count);
+                })
+            },
         );
 
         let handle = timer.spawn();
@@ -145,16 +196,23 @@ mod tests {
         let delay_multiplier = Arc::new(Mutex::new(1));
         let delay_multiplier_clone = delay_multiplier.clone();
 
-        let timer = RepeatTimer::new(
+        let timer = RepeatTimer::from_fns(
             "dynamic_timer".to_string(),
-            Box::new(move || {
-                let multiplier = *delay_multiplier_clone.lock().unwrap();
-                Duration::from_millis(50 * multiplier)
-            }),
-            Box::new(move || {
-                let mut count = counter_clone.lock().unwrap();
-                *count += 1;
-            }),
+            move || {
+                let delay_multiplier_clone = delay_multiplier_clone.clone();
+                Box::pin(async move {
+                    let multiplier = *delay_multiplier_clone.lock().unwrap();
+                    Duration::from_millis(50 * multiplier)
+                })
+            },
+            move || {
+                let counter_clone = counter_clone.clone();
+                Box::pin(async move {
+                    let mut count = counter_clone.lock().unwrap();
+                    *count += 1;
+                    println!("Task executed, count: {}", *count);
+                })
+            },
         );
 
         let handle = timer.spawn();

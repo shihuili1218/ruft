@@ -1,17 +1,19 @@
 use crate::command::{CmdReq, CmdResp};
 use crate::endpoint::Endpoint;
 use crate::node::meta::MetaHolder;
-use crate::repeat_timer::{RepeatTimer, RepeatTimerHandle};
+use crate::repeat_timer::{RepeatTask, RepeatTimer, RepeatTimerHandle};
 use crate::role::candidate::Candidate;
 use crate::role::state::State;
 use crate::rpc::{init_remote_client, run_server, RemoteClient};
 use crate::Config;
 use dashmap::DashMap;
 use rand::Rng;
+use std::future::Future;
 use std::ops::Deref;
+use std::pin::Pin;
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::{Mutex, RwLock, RwLockReadGuard};
 use tracing::{error, info, warn};
 
 pub(crate) struct Node {
@@ -36,22 +38,21 @@ impl Node {
     }
 
     async fn init_client(self: &Arc<Self>) {
-        let node = self.clone();
-        node.remote_clients.clear();
+        self.remote_clients.clear();
 
         let members = {
-            let guard = node.meta.lock().await;
+            let guard = self.meta.lock().await;
             guard.members()
         };
 
         for endpoint in members {
-            if endpoint == node.me {
+            if endpoint == self.me {
                 continue;
             }
 
             match init_remote_client(&endpoint).await {
                 Ok(client) => {
-                    node.remote_clients.insert(endpoint.clone(), client);
+                    self.remote_clients.insert(endpoint, client);
                 }
                 Err(e) => {
                     error!("Failed to init remote client for {}: {}", endpoint, e);
@@ -68,16 +69,16 @@ impl Node {
             timer.restart();
         }
     }
+
     async fn init_timer(self: &Arc<Self>) {
         let node_for_delay = self.clone();
         let node_for_task = self.clone();
 
-        let timer = RepeatTimer::new(
+        let timer = RepeatTimer::from_fns(
             "raft_timer".to_string(),
-            Box::new(move || {
+            move || {
                 let node = node_for_delay.clone();
-                let handle = tokio::runtime::Handle::current();
-                handle.block_on(async move {
+                Box::pin(async move {
                     let guard = node.state.read().await;
                     match guard.deref() {
                         State::Electing { .. } => Duration::from_millis(rand::thread_rng().gen_range(100..300)),
@@ -86,10 +87,10 @@ impl Node {
                         State::Learning { .. } => Duration::from_millis(node.config.heartbeat_interval_millis + 50),
                     }
                 })
-            }),
-            Box::new(move || {
+            },
+            move || {
                 let node = node_for_task.clone();
-                tokio::spawn(async move {
+                Box::pin(async move {
                     let guard = node.state.read().await;
                     match guard.deref() {
                         // elect leader
@@ -107,8 +108,8 @@ impl Node {
                         // do nothing
                         State::Learning { .. } => {}
                     }
-                });
-            }),
+                })
+            },
         )
             .spawn();
 
@@ -131,34 +132,25 @@ impl Node {
         }
     }
 
-    pub fn start(self: &Arc<Self>) {
-        let node = self.clone();
-        tokio::spawn(async move {
-            node.start_timer().await;
-        });
-
-        let node = self.clone();
-        tokio::spawn(async move {
-            node.start_rpc().await;
-        });
+    pub async fn start(self: &Arc<Self>) {
+        self.start_timer().await;
+        self.start_rpc().await;
     }
 
     async fn elect_leader(&self) {
-        let state = self.state.read().await;
+        let guard = self.state.read().await;
+        if let State::Electing { candidate } = &*guard{
 
-        if !matches!(*state, State::Electing { .. }) {
+
+
+        } else {
             info!("elect_leader called but state is not Electing");
-            return;
-        }
-
-        // TODO: 实现选举逻辑
+        };
     }
 
     async fn send_heartbeat(&self) {}
 
-    pub fn update_member(&self, _endpoints: Vec<Endpoint>) {
-        // TODO: 实现更新成员逻辑
-    }
+    pub async fn update_member(&self, _endpoints: Vec<Endpoint>) {}
 
     pub async fn emit(&self, cmd: CmdReq) -> CmdResp {
         let state = self.state.read().await;
