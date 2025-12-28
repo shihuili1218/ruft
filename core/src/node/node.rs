@@ -1,11 +1,11 @@
-use crate::Config;
 use crate::command::{CmdReq, CmdResp};
 use crate::endpoint::Endpoint;
 use crate::node::meta::MetaHolder;
 use crate::repeat_timer::{RepeatTimer, RepeatTimerHandle};
 use crate::role::candidate::Candidate;
 use crate::role::state::State;
-use crate::rpc::{RemoteClient, init_remote_client, run_server};
+use crate::rpc::{init_remote_client, run_server, RemoteClient};
+use crate::Config;
 use dashmap::DashMap;
 use rand::Rng;
 use std::ops::Deref;
@@ -74,40 +74,43 @@ impl Node {
 
         let timer = RepeatTimer::new(
             "raft_timer".to_string(),
-            Box::new(async move || {
-                if let Ok(guard) = node_for_delay.state.read().await {
+            Box::new(move || {
+                let node = node_for_delay.clone();
+                let handle = tokio::runtime::Handle::current();
+                handle.block_on(async move {
+                    let guard = node.state.read().await;
                     match guard.deref() {
-                        State::Electing => Duration::from_millis(rand::thread_rng().gen_range(100..300)),
-                        State::Following { .. } => Duration::from_millis(node_for_delay.config.heartbeat_interval_millis + 50),
-                        State::Leading { .. } => Duration::from_millis(node_for_delay.config.heartbeat_interval_millis),
-                        State::Learning { .. } => Duration::from_millis(node_for_delay.config.heartbeat_interval_millis + 50),
+                        State::Electing { .. } => Duration::from_millis(rand::thread_rng().gen_range(100..300)),
+                        State::Following { .. } => Duration::from_millis(node.config.heartbeat_interval_millis + 50),
+                        State::Leading { .. } => Duration::from_millis(node.config.heartbeat_interval_millis),
+                        State::Learning { .. } => Duration::from_millis(node.config.heartbeat_interval_millis + 50),
                     }
-                } else {
-                    //
-                    Duration::from_millis(node_for_delay.config.heartbeat_interval_millis + 50)
-                }
+                })
             }),
             Box::new(move || {
-                if let Ok(guard) = node_for_task.state.read() {
+                let node = node_for_task.clone();
+                tokio::spawn(async move {
+                    let guard = node.state.read().await;
                     match guard.deref() {
                         // elect leader
-                        State::Electing => node_for_task.elect_leader(),
+                        State::Electing { .. } => node.elect_leader().await,
                         // wait heartbeat timeout
                         State::Following { .. } => {
                             drop(guard);
-                            if let Ok(mut guard) = node_for_task.state.write() {
-                                *guard = State::Electing;
-                            }
+                            let mut guard = node.state.write().await;
+                            *guard = State::Electing {
+                                candidate: Candidate::new(node.me.clone(), vec![]),
+                            };
                         }
                         // send heartbeat interval ends
-                        State::Leading { .. } => node_for_task.send_heartbeat(),
+                        State::Leading { .. } => node.send_heartbeat().await,
                         // do nothing
                         State::Learning { .. } => {}
                     }
-                }
+                });
             }),
         )
-        .spawn();
+            .spawn();
 
         let _ = self.timer.set(timer);
     }
@@ -129,39 +132,39 @@ impl Node {
     }
 
     pub fn start(self: &Arc<Self>) {
-        let _ = self.start_timer();
-        let _ = self.start_rpc();
+        let node = self.clone();
+        tokio::spawn(async move {
+            node.start_timer().await;
+        });
+
+        let node = self.clone();
+        tokio::spawn(async move {
+            node.start_rpc().await;
+        });
     }
 
-    fn elect_leader(&self) {
-        let Ok(state) = self.state.read() else {
-            warn!("elect_leader: failed to acquire state lock");
-            return;
-        };
+    async fn elect_leader(&self) {
+        let state = self.state.read().await;
 
-        if !matches!(*state, State::Electing) {
-            info!("elect_leader called but state is not Electing, {}", state);
+        if !matches!(*state, State::Electing { .. }) {
+            info!("elect_leader called but state is not Electing");
             return;
         }
 
         // TODO: 实现选举逻辑
     }
 
-    fn send_heartbeat(&self) {}
+    async fn send_heartbeat(&self) {}
 
     pub fn update_member(&self, _endpoints: Vec<Endpoint>) {
         // TODO: 实现更新成员逻辑
     }
 
-    pub fn emit(&self, cmd: CmdReq) -> CmdResp {
-        let Ok(state) = self.state.read() else {
-            return CmdResp::Failure {
-                message: String::from("maybe electing?"),
-            };
-        };
+    pub async fn emit(&self, cmd: CmdReq) -> CmdResp {
+        let state = self.state.read().await;
 
         match state.deref() {
-            State::Electing => CmdResp::Failure { message: String::from("Electing") },
+            State::Electing { .. } => CmdResp::Failure { message: String::from("Electing") },
             State::Leading { term: _, leader } => leader.append_entry(cmd),
             State::Following { term, follower } => CmdResp::Failure {
                 message: format!("Following, leader[{}]: {}", term, follower.leader),
