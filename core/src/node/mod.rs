@@ -22,10 +22,10 @@ impl Ruft {
     }
 
     pub async fn update_member(&self, endpoints: Vec<Endpoint>) {
-        self.inner.update_member(endpoints);
+        self.inner.update_member(endpoints).await;
     }
 
-    pub async fn emit(&self, cmd: CmdReq) -> CmdResp {
+    pub async fn emit(&mut self, cmd: CmdReq) -> CmdResp {
         self.inner.emit(cmd).await
     }
 }

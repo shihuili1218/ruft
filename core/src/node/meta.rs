@@ -8,6 +8,7 @@ use std::path::PathBuf;
 struct Meta {
     unfamiliar: bool,
     term: u64,
+    voted_for: u64,
     log_id: u64,
     committed_index: u64,
     members: Vec<Endpoint>,

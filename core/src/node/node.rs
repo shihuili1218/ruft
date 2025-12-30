@@ -3,6 +3,7 @@ use crate::endpoint::Endpoint;
 use crate::node::meta::MetaHolder;
 use crate::repeat_timer::{RepeatTask, RepeatTimer, RepeatTimerHandle};
 use crate::role::candidate::Candidate;
+use crate::role::leader::leader::append_entry;
 use crate::role::state::State;
 use crate::rpc::{init_remote_client, run_server, RemoteClient};
 use crate::Config;
@@ -91,17 +92,17 @@ impl Node {
             move || {
                 let node = node_for_task.clone();
                 Box::pin(async move {
-                    let guard = node.state.read().await;
-                    match guard.deref() {
+                    let state_guard = node.state.read().await;
+                    match state_guard.deref() {
                         // elect leader
                         State::Electing { .. } => node.elect_leader().await,
                         // wait heartbeat timeout
                         State::Following { .. } => {
-                            drop(guard);
-                            let mut guard = node.state.write().await;
-                            *guard = State::Electing {
-                                candidate: Candidate::new(node.me.clone(), vec![]),
-                            };
+                            drop(state_guard);
+                            let mut state_guard = node.state.write().await;
+                            let mut meta_guard = node.meta.lock().await;
+                            let next_term = meta_guard.next_term();
+                            *state_guard = State::Electing { term: next_term, votes_received: 0 };
                         }
                         // send heartbeat interval ends
                         State::Leading { .. } => node.send_heartbeat().await,
@@ -111,7 +112,7 @@ impl Node {
                 })
             },
         )
-            .spawn();
+        .spawn();
 
         let _ = self.timer.set(timer);
     }
@@ -119,11 +120,10 @@ impl Node {
 
 impl Node {
     pub fn new(me: Endpoint, config: Config) -> Self {
-        let meta = MetaHolder::new(&config);
+        let mut meta = MetaHolder::new(&config);
+        let next_term = meta.next_term();
         Node {
-            state: RwLock::new(State::Electing {
-                candidate: Candidate::new(me.clone(), meta.members()),
-            }),
+            state: RwLock::new(State::Electing { term: next_term, votes_received: 0 }),
             meta: Mutex::new(meta),
             me,
             config,
@@ -139,10 +139,7 @@ impl Node {
 
     async fn elect_leader(&self) {
         let guard = self.state.read().await;
-        if let State::Electing { candidate } = &*guard{
-
-
-
+        if let State::Electing { term, votes_received } = &*guard {
         } else {
             info!("elect_leader called but state is not Electing");
         };
@@ -152,18 +149,7 @@ impl Node {
 
     pub async fn update_member(&self, _endpoints: Vec<Endpoint>) {}
 
-    pub async fn emit(&self, cmd: CmdReq) -> CmdResp {
-        let state = self.state.read().await;
-
-        match state.deref() {
-            State::Electing { .. } => CmdResp::Failure { message: String::from("Electing") },
-            State::Leading { term: _, leader } => leader.append_entry(cmd),
-            State::Following { term, follower } => CmdResp::Failure {
-                message: format!("Following, leader[{}]: {}", term, follower.leader),
-            },
-            State::Learning { term, learner } => CmdResp::Failure {
-                message: format!("Learning, leader[{}]: {}", term, learner.leader),
-            },
-        }
+    pub async fn emit(&mut self, cmd: CmdReq) -> CmdResp {
+        append_entry(self, cmd).await
     }
 }
