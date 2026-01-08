@@ -1,17 +1,26 @@
-use crate::command::{CmdReq, CmdResp};
-use crate::endpoint::Endpoint;
+use crate::role::state::RaftState;
+use std::fmt::Display;
 
-pub(crate) struct Candidate {
-    endpoint: Endpoint,
-    followers: Vec<Endpoint>,
+/// Candidate state: requesting votes to become leader
+#[derive(Debug, Clone)]
+pub struct Candidate {
+    pub term: u64,
+    pub votes_received: u64,
+    pub voted_for: u8,
 }
 
-impl Candidate {
-    pub fn new(endpoint: Endpoint, followers: Vec<Endpoint>) -> Self {
-        Candidate { endpoint, followers }
+impl RaftState for Candidate {
+    fn term(&self) -> u64 {
+        self.term
     }
 
-    pub fn pre_vote(&self, _command: CmdReq) -> CmdResp {
-        CmdResp::NotLeader { leader: None }
+    fn state_name() -> &'static str {
+        "Candidate"
+    }
+}
+
+impl Display for Candidate {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Candidate[term={}, votes={}]", self.term, self.votes_received)
     }
 }

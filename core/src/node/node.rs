@@ -1,9 +1,7 @@
-use crate::command::{CmdReq, CmdResp};
-use crate::endpoint::Endpoint;
 use crate::node::meta::PersistentMeta;
 use crate::repeat_timer::{RepeatTimer, RepeatTimerHandle};
-use crate::role::state::{Candidate, Follower, Leader, Learner, RaftState};
-use crate::rpc::{init_remote_client, run_server, RemoteClient};
+use crate::role::{Candidate, Follower, Leader, Learner, RaftState};
+use crate::rpc::{init_remote_client, run_server, Endpoint, RemoteClient};
 use crate::{Config, Result, RuftError};
 use dashmap::DashMap;
 use rand::Rng;
@@ -11,6 +9,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
 use tracing::{error, info};
+use crate::rpc::command::{CmdReq, CmdResp};
 
 /// Common data shared across all states
 struct CommonData {
@@ -23,7 +22,7 @@ struct CommonData {
 
 /// Type-safe node with specific state
 /// Each state (Follower, Candidate, Leader, Learner) has its own data
-pub struct NodeData<S: RaftState> {
+struct NodeData<S: RaftState> {
     common: CommonData,
     pub state: S,
 }
@@ -368,7 +367,7 @@ impl Node {
         match guard.as_ref() {
             Some(node) => node.emit(cmd).await,
             None => CmdResp::Rejected {
-                code: crate::command::ErrorCode::Internal,
+                code: crate::rpc::command::ErrorCode::Internal,
                 message: "Node is shutting down".into(),
             },
         }

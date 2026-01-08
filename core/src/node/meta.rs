@@ -1,8 +1,8 @@
-use crate::endpoint::Endpoint;
 use crate::storage::MmapStorage;
 use crate::{Config, Result, RuftError};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use crate::rpc::Endpoint;
 
 #[derive(Serialize, Deserialize, Clone)]
 struct Meta {

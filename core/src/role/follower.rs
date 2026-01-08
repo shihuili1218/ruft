@@ -1,16 +1,27 @@
-pub mod follower {
-    use crate::node::node::Node;
-    use crate::rpc::{AppendEntriesRequest, AppendEntriesResponse, PreVoteRequest, PreVoteResponse, RequestVoteRequest, RequestVoteResponse};
+use crate::role::state::RaftState;
+use std::fmt::Display;
+use crate::rpc::Endpoint;
 
-    pub fn on_pre_vote(node: &Node, request: PreVoteRequest) -> PreVoteResponse {
-        todo!()
+/// Follower state: waiting for heartbeats from leader
+#[derive(Debug, Clone)]
+pub struct Follower {
+    pub term: u64,
+    pub leader: Endpoint,
+    pub voted_for: Option<u64>,
+}
+
+impl RaftState for Follower {
+    fn term(&self) -> u64 {
+        self.term
     }
 
-    pub fn on_vote(node: &Node, request: RequestVoteRequest) -> RequestVoteResponse {
-        todo!()
+    fn state_name() -> &'static str {
+        "Follower"
     }
+}
 
-    pub fn on_append_entry(node: &Node, request: AppendEntriesRequest) -> AppendEntriesResponse {
-        todo!()
+impl Display for Follower {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Following[term={}, leader={}]", self.term, self.leader)
     }
 }

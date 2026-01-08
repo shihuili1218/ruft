@@ -1,6 +1,6 @@
 use bytes::Bytes;
-use core::command::CmdReq;
-use core::endpoint::{Address, Endpoint};
+use core::rpc::command::{CmdReq, CmdResp};
+use core::rpc::Endpoint;
 use core::{Config, Ruft};
 use tracing::info;
 use tracing_subscriber::EnvFilter;
@@ -13,7 +13,7 @@ async fn main() {
     // Create config using the new builder pattern
     let config = Config::builder().data_dir("/tmp/ruft/node0").heartbeat_interval(1000).build();
 
-    let endpoint = Endpoint::new(0, Address::new("127.0.0.1".to_string(), 5000));
+    let endpoint = Endpoint::new(0, "127.0.0.1".to_string(), 5000);
 
     match Ruft::new(endpoint, config) {
         Ok(ruft) => {

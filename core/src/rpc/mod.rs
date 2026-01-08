@@ -5,8 +5,11 @@
 #[allow(unused_extern_crates)]
 extern crate std;
 
-use crate::endpoint::Endpoint;
+pub mod command;
+mod endpoint;
+
 use crate::node::node::Node;
+pub use crate::rpc::endpoint::Endpoint;
 use crate::rpc::ruft_rpc_client::RuftRpcClient;
 use crate::rpc::ruft_rpc_server::{RuftRpc, RuftRpcServer};
 use std::error::Error;
@@ -17,6 +20,7 @@ use tonic::transport::Channel;
 use tonic::transport::Endpoint as TonicEndpoint;
 use tonic::{Request, Response, Status};
 use tracing::info;
+
 tonic::include_proto!("ruft");
 
 pub async fn run_server(node: Arc<Node>) -> Result<(), Box<dyn Error + Send + Sync>> {

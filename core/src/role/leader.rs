@@ -1,19 +1,31 @@
-// TODO: This module needs to be redesigned for the new typestate architecture
-// The command processing logic has been moved to RaftNode::emit()
+use crate::role::state::RaftState;
+use std::collections::HashMap;
+use std::fmt::Display;
+use crate::rpc::Endpoint;
 
-/*
-pub mod leader {
-    use crate::command::{CmdReq, CmdResp};
-    use crate::node::node::Node;
+/// Leader state: managing replication to followers
+/// Only the Leader has next_index and match_index - type system enforces this!
+#[derive(Debug, Clone)]
+pub struct Leader {
+    pub term: u64,
+    /// For each server, index of the next log entry to send
+    pub next_index: HashMap<Endpoint, u64>,
+    /// For each server, index of highest log entry known to be replicated
+    pub match_index: HashMap<Endpoint, u64>,
+}
 
-    pub async fn append_entry(node: &Node, command: CmdReq) -> CmdResp {
-        // TODO: Implement with new architecture
-        todo!()
+impl RaftState for Leader {
+    fn term(&self) -> u64 {
+        self.term
     }
 
-    pub fn replicate_log(node: &mut Node) -> Result<(), String> {
-        // Leader-specific replication logic
-        todo!()
+    fn state_name() -> &'static str {
+        "Leader"
     }
 }
-*/
+
+impl Display for Leader {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Leader[term={}, followers={}]", self.term, self.next_index.len())
+    }
+}

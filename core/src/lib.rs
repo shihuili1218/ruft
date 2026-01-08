@@ -2,13 +2,11 @@
 #[allow(unused_extern_crates)]
 extern crate std;
 
-pub mod command;
-pub mod endpoint;
-pub mod error;
-pub mod node;
+mod error;
+mod node;
 mod repeat_timer;
 mod role;
-mod rpc;
+pub mod rpc;
 mod storage;
 
 pub use error::{Result, RuftError};

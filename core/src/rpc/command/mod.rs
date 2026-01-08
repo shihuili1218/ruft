@@ -1,5 +1,5 @@
-use crate::endpoint::Endpoint;
 use bytes::Bytes;
+use crate::rpc::Endpoint;
 
 #[derive(Clone, Debug)]
 pub struct CmdReq {
