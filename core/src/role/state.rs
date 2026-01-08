@@ -38,7 +38,7 @@ impl Display for Follower {
 pub struct Candidate {
     pub term: u64,
     pub votes_received: u64,
-    pub voted_for: u64,
+    pub voted_for: u8,
 }
 
 impl RaftState for Candidate {

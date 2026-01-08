@@ -22,11 +22,10 @@ impl Ruft {
     /// Create a new Raft node
     ///
     /// # Arguments
-    /// * `id` - Unique identifier for this node
     /// * `endpoint` - Network endpoint for this node
     /// * `config` - Configuration parameters
-    pub fn new(id: u64, endpoint: Endpoint, config: Config) -> Result<Self> {
-        let node = Node::new(id, endpoint, config)?;
+    pub fn new(endpoint: Endpoint, config: Config) -> Result<Self> {
+        let node = Node::new(endpoint, config)?;
         Ok(Ruft {
             inner: Arc::new(node),
         })
@@ -47,7 +46,7 @@ impl Ruft {
     /// If this node is the leader, the command will be replicated.
     /// If not, returns NotLeader with the known leader endpoint.
     pub async fn submit(&self, cmd: CmdReq) -> CmdResp {
-        self.inner.emit(cmd).await
+        self.inner.submit(cmd).await
     }
 
     /// Update cluster membership

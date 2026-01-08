@@ -11,14 +11,11 @@ async fn main() {
     info!("Starting Raft node example");
 
     // Create config using the new builder pattern
-    let config = Config::builder()
-        .data_dir("/tmp/ruft/node0")
-        .heartbeat_interval(1000)
-        .build();
+    let config = Config::builder().data_dir("/tmp/ruft/node0").heartbeat_interval(1000).build();
 
     let endpoint = Endpoint::new(0, Address::new("127.0.0.1".to_string(), 5000));
 
-    match Ruft::new(0, endpoint, config) {
+    match Ruft::new(endpoint, config) {
         Ok(ruft) => {
             info!("Raft node created successfully");
 
@@ -50,11 +47,7 @@ async fn main() {
 
 fn init_tracing() {
     tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::from_default_env()
-                .add_directive("core=info".parse().unwrap())
-                .add_directive("x=info".parse().unwrap()),
-        )
+        .with_env_filter(EnvFilter::from_default_env().add_directive("core=info".parse().unwrap()).add_directive("x=info".parse().unwrap()))
         .with_target(true)
         .with_thread_ids(true)
         .with_thread_names(true)

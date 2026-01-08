@@ -14,7 +14,6 @@ use tracing::{error, info};
 
 /// Common data shared across all states
 struct CommonData {
-    id: u64,
     endpoint: Endpoint,
     meta: PersistentMeta,
     config: Config,
@@ -39,12 +38,11 @@ pub enum RaftNode {
 }
 
 impl RaftNode {
-    pub fn new(id: u64, endpoint: Endpoint, config: Config) -> Result<Self> {
+    pub fn new(endpoint: Endpoint, config: Config) -> Result<Self> {
         let meta = PersistentMeta::new(&config)?;
         let term = meta.term();
 
         let common = CommonData {
-            id,
             endpoint: endpoint.clone(),
             meta,
             config,
@@ -135,7 +133,7 @@ impl RaftNode {
     pub fn start_election(self) -> Result<Self> {
         if let RaftNode::Follower(mut node) = self {
             let new_term = node.common.meta.next_term()?;
-            let id = node.common.id;
+            let id = node.common.endpoint.id();
             let votes = 1; // Vote for self
 
             Ok(RaftNode::Candidate(NodeData {
@@ -169,7 +167,7 @@ impl RaftNode {
                 }
             }
 
-            info!("Node {} became leader for term {}", node.common.id, node.state.term);
+            info!("Node {} became leader for term {}", node.common.endpoint.id(), node.state.term);
 
             Ok(RaftNode::Leader(NodeData {
                 common: node.common,
@@ -245,8 +243,8 @@ pub struct Node {
 }
 
 impl Node {
-    pub fn new(id: u64, endpoint: Endpoint, config: Config) -> Result<Self> {
-        let node = RaftNode::new(id, endpoint, config)?;
+    pub fn new(endpoint: Endpoint, config: Config) -> Result<Self> {
+        let node = RaftNode::new(endpoint, config)?;
         Ok(Node {
             inner: Mutex::new(Some(node)),
         })
@@ -365,7 +363,7 @@ impl Node {
         }
     }
 
-    pub async fn emit(&self, cmd: CmdReq) -> CmdResp {
+    pub async fn submit(&self, cmd: CmdReq) -> CmdResp {
         let guard = self.inner.lock().await;
         match guard.as_ref() {
             Some(node) => node.emit(cmd).await,
