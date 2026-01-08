@@ -13,6 +13,7 @@ async fn main() {
     // Create config using the new builder pattern
     let config = Config::builder().data_dir("/tmp/ruft/node0").heartbeat_interval(1000).build();
 
+
     let endpoint = Endpoint::new(0, "127.0.0.1".to_string(), 5000);
 
     match Ruft::new(endpoint, config) {

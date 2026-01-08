@@ -13,8 +13,6 @@ pub use crate::rpc::endpoint::Endpoint;
 use crate::rpc::ruft_rpc_client::RuftRpcClient;
 use crate::rpc::ruft_rpc_server::{RuftRpc, RuftRpcServer};
 use std::error::Error;
-use std::future;
-use std::marker;
 use std::sync::Arc;
 use tonic::transport::Channel;
 use tonic::transport::Endpoint as TonicEndpoint;
