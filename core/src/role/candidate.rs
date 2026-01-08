@@ -11,7 +11,7 @@ impl Candidate {
         Candidate { endpoint, followers }
     }
 
-    pub fn pre_vote(&self, command: CmdReq) -> CmdResp {
-        CmdResp::Failure { message: String::new() }
+    pub fn pre_vote(&self, _command: CmdReq) -> CmdResp {
+        CmdResp::NotLeader { leader: None }
     }
 }

@@ -1,20 +1,27 @@
+use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Endpoint {
-    id: usize,
+    id: u8,
     address: Address,
-    pub url: String,
 }
 
 impl Endpoint {
-    pub fn new(id: usize, address: Address) -> Self {
-        let url = format!("http://{}:{}", address.host, address.port);
-        Endpoint {
-            id,
-            address,
-            url,
-        }
+    pub fn new(id: u8, address: Address) -> Self {
+        Endpoint { id, address }
+    }
+
+    pub fn id(&self) -> u8 {
+        self.id
+    }
+
+    pub fn address(&self) -> &Address {
+        &self.address
+    }
+
+    pub fn url(&self) -> String {
+        format!("http://{}:{}", self.address.host, self.address.port)
     }
 }
 
@@ -26,7 +33,7 @@ impl Display for Endpoint {
     }
 }
 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Address {
     host: String,
     port: u16,
@@ -35,5 +42,13 @@ pub struct Address {
 impl Address {
     pub fn new(host: String, port: u16) -> Self {
         Address { host, port }
+    }
+
+    pub fn host(&self) -> &str {
+        &self.host
+    }
+
+    pub fn port(&self) -> u16 {
+        self.port
     }
 }

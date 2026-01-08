@@ -1,4 +1,7 @@
 // Fix name conflict between our crate `core` and std's `core`
+// Disable doctests for this module due to protobuf codegen conflicts
+#![cfg_attr(doctest, allow(unused))]
+
 #[allow(unused_extern_crates)]
 extern crate std;
 
@@ -7,6 +10,8 @@ use crate::node::node::Node;
 use crate::rpc::ruft_rpc_client::RuftRpcClient;
 use crate::rpc::ruft_rpc_server::{RuftRpc, RuftRpcServer};
 use std::error::Error;
+use std::future;
+use std::marker;
 use std::sync::Arc;
 use tonic::transport::Channel;
 use tonic::transport::Endpoint as TonicEndpoint;
@@ -40,7 +45,7 @@ impl RuftRpc for Node {
 // ========================= client =========================
 
 pub async fn init_remote_client(endpoint: &Endpoint) -> Result<RemoteClient, Box<dyn Error + Send + Sync>> {
-    let channel = TonicEndpoint::from_shared(endpoint.url.clone())?.connect().await?;
+    let channel = TonicEndpoint::from_shared(endpoint.url())?.connect().await?;
     let client = RuftRpcClient::new(channel);
     Ok(RemoteClient { client })
 }
