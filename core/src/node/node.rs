@@ -1,7 +1,10 @@
 use crate::node::meta::PersistentMeta;
 use crate::repeat_timer::{RepeatTimer, RepeatTimerHandle};
 use crate::role::{Candidate, Follower, Leader, Learner, RaftState};
-use crate::rpc::{init_remote_client, run_server, Endpoint, RemoteClient};
+use crate::rpc::client::{init_remote_client, RemoteClient};
+use crate::rpc::command::{CmdReq, CmdResp};
+use crate::rpc::server::run_server;
+use crate::rpc::Endpoint;
 use crate::{Config, Result, RuftError};
 use dashmap::DashMap;
 use rand::Rng;
@@ -9,7 +12,6 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
 use tracing::{error, info};
-use crate::rpc::command::{CmdReq, CmdResp};
 
 /// Common data shared across all states
 struct CommonData {
@@ -244,9 +246,7 @@ pub struct Node {
 impl Node {
     pub fn new(endpoint: Endpoint, config: Config) -> Result<Self> {
         let node = RaftNode::new(endpoint, config)?;
-        Ok(Node {
-            inner: Mutex::new(Some(node)),
-        })
+        Ok(Node { inner: Mutex::new(Some(node)) })
     }
 
     pub async fn start(self: Arc<Self>) -> Result<()> {
@@ -279,9 +279,7 @@ impl Node {
                     let guard = node.inner.lock().await;
                     if let Some(raft_node) = guard.as_ref() {
                         match raft_node {
-                            RaftNode::Candidate(_) => {
-                                Duration::from_millis(rand::thread_rng().gen_range(150..300))
-                            }
+                            RaftNode::Candidate(_) => Duration::from_millis(rand::thread_rng().gen_range(150..300)),
                             RaftNode::Follower(_) | RaftNode::Learner(_) => {
                                 let config = raft_node.common().config.heartbeat_interval_millis;
                                 Duration::from_millis(config + 50)
@@ -380,9 +378,6 @@ impl Node {
 
     pub async fn state_name(&self) -> String {
         let guard = self.inner.lock().await;
-        guard
-            .as_ref()
-            .map(|n| n.state_name().to_string())
-            .unwrap_or_else(|| "Shutdown".to_string())
+        guard.as_ref().map(|n| n.state_name().to_string()).unwrap_or_else(|| "Shutdown".to_string())
     }
 }
