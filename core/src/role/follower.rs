@@ -1,6 +1,6 @@
 use crate::role::state::RaftState;
-use std::fmt::Display;
 use crate::rpc::Endpoint;
+use std::fmt::Display;
 
 /// Follower state: waiting for heartbeats from leader
 #[derive(Debug, Clone)]

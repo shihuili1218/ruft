@@ -20,7 +20,7 @@ impl Endpoint {
     pub fn host(&self) -> &String {
         &self.host
     }
-    
+
     pub fn port(&self) -> u16 {
         self.port
     }

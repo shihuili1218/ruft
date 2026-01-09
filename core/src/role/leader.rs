@@ -1,7 +1,7 @@
 use crate::role::state::RaftState;
+use crate::rpc::Endpoint;
 use std::collections::HashMap;
 use std::fmt::Display;
-use crate::rpc::Endpoint;
 
 /// Leader state: managing replication to followers
 /// Only the Leader has next_index and match_index - type system enforces this!

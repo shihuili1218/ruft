@@ -1,8 +1,8 @@
-use std::sync::Arc;
 use crate::Config;
 use crate::node::node::Node;
-use crate::rpc::command::{CmdReq, CmdResp};
 use crate::rpc::Endpoint;
+use crate::rpc::command::{CmdReq, CmdResp};
+use std::sync::Arc;
 
 /// Main entry point for Raft consensus
 ///
@@ -23,9 +23,7 @@ impl Ruft {
     /// * `config` - Configuration parameters
     pub fn new(endpoint: Endpoint, config: Config) -> crate::Result<Self> {
         let node = Node::new(endpoint, config)?;
-        Ok(Ruft {
-            inner: Arc::new(node),
-        })
+        Ok(Ruft { inner: Arc::new(node) })
     }
 
     /// Start the Raft node
@@ -78,8 +76,6 @@ impl Ruft {
 
 impl Clone for Ruft {
     fn clone(&self) -> Self {
-        Ruft {
-            inner: self.inner.clone(),
-        }
+        Ruft { inner: self.inner.clone() }
     }
 }

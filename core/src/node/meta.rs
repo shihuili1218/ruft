@@ -1,8 +1,8 @@
+use crate::rpc::Endpoint;
 use crate::storage::MmapStorage;
 use crate::{Config, Result, RuftError};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
-use crate::rpc::Endpoint;
 
 #[derive(Serialize, Deserialize, Clone)]
 struct Meta {
@@ -23,8 +23,7 @@ impl PersistentMeta {
     pub fn new(config: &Config) -> Result<Self> {
         let path = format!("{}/meta.bin", config.data_dir);
         let meta_path = PathBuf::from(&path);
-        let storage = MmapStorage::open_or_create(meta_path, 4096)
-            .map_err(|e| RuftError::Storage(format!("Failed to open meta file {}: {}", path, e)))?;
+        let storage = MmapStorage::open_or_create(meta_path, 4096).map_err(|e| RuftError::Storage(format!("Failed to open meta file {}: {}", path, e)))?;
 
         // Try to load existing data, or initialize new
         let data = storage.read_serialized::<Meta>().unwrap_or_else(|_| {
@@ -51,9 +50,7 @@ impl PersistentMeta {
     }
 
     fn persist(&mut self) -> Result<()> {
-        self.storage
-            .write_serialized(&self.data)
-            .map_err(|e| RuftError::Storage(format!("Failed to persist meta: {}", e)))
+        self.storage.write_serialized(&self.data).map_err(|e| RuftError::Storage(format!("Failed to persist meta: {}", e)))
     }
 
     pub fn next_log_id(&mut self) -> Result<u64> {

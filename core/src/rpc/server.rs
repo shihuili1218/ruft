@@ -1,10 +1,10 @@
+use crate::node::node::Node;
+use crate::rpc::ruft_rpc_server::{RuftRpc, RuftRpcServer};
+use crate::rpc::{AppendEntriesRequest, AppendEntriesResponse, PreVoteRequest, PreVoteResponse, RequestVoteRequest, RequestVoteResponse};
 use std::error::Error;
 use std::sync::Arc;
 use tonic::{Request, Response, Status};
 use tracing::info;
-use crate::node::node::Node;
-use crate::rpc::{AppendEntriesRequest, AppendEntriesResponse, PreVoteRequest, PreVoteResponse, RequestVoteRequest, RequestVoteResponse};
-use crate::rpc::ruft_rpc_server::{RuftRpc, RuftRpcServer};
 
 pub async fn run_server(node: Arc<Node>) -> Result<(), Box<dyn Error + Send + Sync>> {
     let addr = "127.0.0.1:1218".parse()?;

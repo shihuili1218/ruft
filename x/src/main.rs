@@ -10,10 +10,9 @@ async fn main() {
     init_tracing();
     info!("Starting Raft node example");
 
-    // Create config using the new builder pattern
-    let config = Config::builder().data_dir("/tmp/ruft/node0").heartbeat_interval(1000).build();
-
     let endpoint = Endpoint::new(0, "127.0.0.1".to_string(), 5000);
+    // Create config using the new builder pattern
+    let config = Config::builder().data_dir("/tmp/ruft/node0").members(vec![endpoint.clone()]).heartbeat_interval(1000).build();
 
     match Ruft::new(endpoint, config) {
         Ok(ruft) => {

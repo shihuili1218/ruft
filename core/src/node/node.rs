@@ -1,10 +1,10 @@
 use crate::node::meta::PersistentMeta;
 use crate::repeat_timer::{RepeatTimer, RepeatTimerHandle};
 use crate::role::{Candidate, Follower, Leader, Learner, RaftState};
-use crate::rpc::client::{init_remote_client, RemoteClient};
+use crate::rpc::Endpoint;
+use crate::rpc::client::{RemoteClient, init_remote_client};
 use crate::rpc::command::{CmdReq, CmdResp};
 use crate::rpc::server::run_server;
-use crate::rpc::Endpoint;
 use crate::{Config, Result, RuftError};
 use dashmap::DashMap;
 use rand::Rng;
@@ -131,24 +131,40 @@ impl RaftNode {
     }
 
     /// Transition from Follower to Candidate (election timeout)
-    pub fn start_election(self) -> Result<Self> {
-        if let RaftNode::Follower(mut node) = self {
-            let new_term = node.common.meta.next_term()?;
-            let id = node.common.endpoint.id();
-            let votes = 1; // Vote for self
+    pub fn transition_candidate(self) -> Result<Self> {
 
-            Ok(RaftNode::Candidate(NodeData {
-                common: node.common,
-                state: Candidate {
-                    term: new_term,
-                    votes_received: votes,
-                    voted_for: id,
-                },
-            }))
-        } else {
-            // Can only start election from Follower state
-            Ok(self)
+        match self {
+            RaftNode::Follower(mut node) => {
+                let new_term = node.common.meta.next_term()?;
+                let id = node.common.endpoint.id();
+                let votes = 1; // Vote for self
+
+                Ok(RaftNode::Candidate(NodeData {
+                    common: node.common,
+                    state: Candidate {
+                        term: new_term,
+                        votes_received: votes,
+                        voted_for: id,
+                    },
+                }))
+            }
+            RaftNode::Leader(mut node) =>  {
+                let new_term = node.common.meta.next_term()?;
+                let id = node.common.endpoint.id();
+                let votes = 1; // Vote for self
+
+                Ok(RaftNode::Candidate(NodeData {
+                    common: node.common,
+                    state: Candidate {
+                        term: new_term,
+                        votes_received: votes,
+                        voted_for: id,
+                    },
+                }))
+            }
+            RaftNode::Candidate(_) | RaftNode::Learner(_) =>   Ok(self)
         }
+
     }
 
     /// Transition from Candidate to Leader (won election)
@@ -219,7 +235,7 @@ impl RaftNode {
         }
     }
 
-    pub async fn emit(&self, _cmd: CmdReq) -> CmdResp {
+    pub async fn submit(&self, _cmd: CmdReq) -> CmdResp {
         // Only leader can process commands
         match self {
             RaftNode::Leader(_) => {
@@ -280,14 +296,8 @@ impl Node {
                     if let Some(raft_node) = guard.as_ref() {
                         match raft_node {
                             RaftNode::Candidate(_) => Duration::from_millis(rand::thread_rng().gen_range(150..300)),
-                            RaftNode::Follower(_) | RaftNode::Learner(_) => {
-                                let config = raft_node.common().config.heartbeat_interval_millis;
-                                Duration::from_millis(config + 50)
-                            }
-                            RaftNode::Leader(_) => {
-                                let config = raft_node.common().config.heartbeat_interval_millis;
-                                Duration::from_millis(config)
-                            }
+                            RaftNode::Follower(_) | RaftNode::Learner(_) => Duration::from_millis(raft_node.common().config.heartbeat_interval_millis + 50),
+                            RaftNode::Leader(_) => Duration::from_millis(raft_node.common().config.heartbeat_interval_millis),
                         }
                     } else {
                         Duration::from_millis(1000)
@@ -301,43 +311,35 @@ impl Node {
 
                     // Take ownership of the node for state transitions
                     if let Some(current_node) = guard.take() {
-                        let is_follower = matches!(&current_node, RaftNode::Follower(_));
-
-                        if is_follower {
-                            // Heartbeat timeout - become candidate
-                            info!("Heartbeat timeout, becoming candidate");
-                            match current_node.start_election() {
-                                Ok(new_node) => {
-                                    *guard = Some(new_node);
-                                }
-                                Err(e) => {
-                                    error!("Failed to start election: {}", e);
-                                    // Can't restore current_node after move, create new follower
-                                    // This is unlikely to happen as start_election rarely fails
-                                    *guard = None;
+                        match current_node {
+                            RaftNode::Candidate(_) => {
+                                info!("Election timeout, starting new election");
+                                // TODO: Send RequestVote RPCs
+                                *guard = Some(current_node);
+                            }
+                            RaftNode::Follower(_) => {
+                                info!("Heartbeat timeout, becoming candidate");
+                                match current_node.transition_candidate() {
+                                    Ok(new_node) => {
+                                        *guard = Some(new_node);
+                                    }
+                                    Err(e) => {
+                                        error!("Failed to start election: {}", e);
+                                        // Can't restore current_node after move, create new follower
+                                        // This is unlikely to happen as start_election rarely fails
+                                        *guard = None;
+                                    }
                                 }
                             }
-                        } else {
-                            match &current_node {
-                                RaftNode::Candidate(_) => {
-                                    // Election timeout - start new election
-                                    info!("Election timeout, starting new election");
-                                    // TODO: Send RequestVote RPCs
-                                    *guard = Some(current_node);
-                                }
-                                RaftNode::Leader(_) => {
-                                    // Send heartbeat
-                                    info!("Sending heartbeat");
-                                    // TODO: Send AppendEntries RPCs
-                                    *guard = Some(current_node);
-                                }
-                                RaftNode::Learner(_) => {
-                                    // Learner does nothing on timeout
-                                    *guard = Some(current_node);
-                                }
-                                _ => {
-                                    *guard = Some(current_node);
-                                }
+                            RaftNode::Leader(_) => {
+                                // Send heartbeat
+                                info!("Sending heartbeat");
+                                // TODO: Send AppendEntries RPCs
+                                *guard = Some(current_node);
+                            }
+                            RaftNode::Learner(_)  => {
+                                // Learner does nothing on timeout
+                                *guard = Some(current_node);
                             }
                         }
                     }
@@ -363,7 +365,7 @@ impl Node {
     pub async fn submit(&self, cmd: CmdReq) -> CmdResp {
         let guard = self.inner.lock().await;
         match guard.as_ref() {
-            Some(node) => node.emit(cmd).await,
+            Some(node) => node.submit(cmd).await,
             None => CmdResp::Rejected {
                 code: crate::rpc::command::ErrorCode::Internal,
                 message: "Node is shutting down".into(),

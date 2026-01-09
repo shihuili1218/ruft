@@ -8,6 +8,8 @@ mod repeat_timer;
 mod role;
 pub mod rpc;
 mod storage;
+mod sm;
 
 pub use error::{Result, RuftError};
 pub use node::{Config, ConfigBuilder, Ruft};
+pub use sm::Sm;
