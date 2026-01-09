@@ -1,10 +1,10 @@
 use crate::node::meta::PersistentMeta;
 use crate::repeat_timer::{RepeatTimer, RepeatTimerHandle};
 use crate::role::{Candidate, Follower, Leader, Learner, RaftState};
-use crate::rpc::Endpoint;
-use crate::rpc::client::{RemoteClient, init_remote_client};
+use crate::rpc::client::{init_remote_client, RemoteClient};
 use crate::rpc::command::{CmdReq, CmdResp};
 use crate::rpc::server::run_server;
+use crate::rpc::Endpoint;
 use crate::{Config, Result, RuftError};
 use dashmap::DashMap;
 use rand::Rng;
@@ -132,43 +132,29 @@ impl RaftNode {
 
     /// Transition from Follower to Candidate (election timeout)
     pub fn transition_candidate(self) -> Result<Self> {
+        fn make_candidate(mut common: CommonData) -> Result<RaftNode> {
+            let new_term = common.meta.next_term()?;
+            let id = common.endpoint.id();
 
-        match self {
-            RaftNode::Follower(mut node) => {
-                let new_term = node.common.meta.next_term()?;
-                let id = node.common.endpoint.id();
-                let votes = 1; // Vote for self
-
-                Ok(RaftNode::Candidate(NodeData {
-                    common: node.common,
-                    state: Candidate {
-                        term: new_term,
-                        votes_received: votes,
-                        voted_for: id,
-                    },
-                }))
-            }
-            RaftNode::Leader(mut node) =>  {
-                let new_term = node.common.meta.next_term()?;
-                let id = node.common.endpoint.id();
-                let votes = 1; // Vote for self
-
-                Ok(RaftNode::Candidate(NodeData {
-                    common: node.common,
-                    state: Candidate {
-                        term: new_term,
-                        votes_received: votes,
-                        voted_for: id,
-                    },
-                }))
-            }
-            RaftNode::Candidate(_) | RaftNode::Learner(_) =>   Ok(self)
+            Ok(RaftNode::Candidate(NodeData {
+                common,
+                state: Candidate {
+                    term: new_term,
+                    votes_received: 1,
+                    voted_for: id,
+                },
+            }))
         }
 
+        match self {
+            RaftNode::Follower(node) => make_candidate(node.common),
+            RaftNode::Leader(node) => make_candidate(node.common),
+            RaftNode::Candidate(_) | RaftNode::Learner(_) => Ok(self),
+        }
     }
 
     /// Transition from Candidate to Leader (won election)
-    pub fn become_leader(self) -> Result<Self> {
+    pub fn transition_leader(self) -> Result<Self> {
         if let RaftNode::Candidate(node) = self {
             let members = node.common.meta.members();
             let last_log_index = node.common.meta.log_id();
@@ -200,7 +186,7 @@ impl RaftNode {
     }
 
     /// Transition from Candidate to Follower (lost election or discovered higher term)
-    pub fn step_down(self, new_term: u64, leader: Endpoint) -> Result<Self> {
+    pub fn transition_follower(self, new_term: u64, leader: Endpoint) -> Result<Self> {
         match self {
             RaftNode::Candidate(mut node) => {
                 if new_term > node.state.term() {
@@ -337,7 +323,7 @@ impl Node {
                                 // TODO: Send AppendEntries RPCs
                                 *guard = Some(current_node);
                             }
-                            RaftNode::Learner(_)  => {
+                            RaftNode::Learner(_) => {
                                 // Learner does nothing on timeout
                                 *guard = Some(current_node);
                             }
