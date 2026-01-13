@@ -2,7 +2,7 @@ use bytes::Bytes;
 use core::rpc::command::{CmdReq, CmdResp};
 use core::rpc::Endpoint;
 use core::{Config, Ruft};
-use tracing::info;
+use tracing::{error, info};
 use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
@@ -19,7 +19,7 @@ async fn main() {
             info!("Raft node created successfully");
 
             if let Err(e) = ruft.start().await {
-                eprintln!("Failed to start Raft node: {}", e);
+                error!("Failed to start Raft node: {}", e);
                 return;
             }
 

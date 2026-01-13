@@ -39,6 +39,99 @@ pub enum RaftNode {
 }
 
 impl RaftNode {
+    /// Transition from Follower to Candidate (election timeout)
+    fn transition_candidate(self) -> Result<Self> {
+        fn make_candidate(mut common: CommonData) -> Result<RaftNode> {
+            let new_term = common.meta.next_term()?;
+            let id = common.endpoint.id();
+
+            Ok(RaftNode::Candidate(NodeData {
+                common,
+                state: Candidate {
+                    term: new_term,
+                    votes_received: 1,
+                    voted_for: id,
+                },
+            }))
+        }
+
+        match self {
+            RaftNode::Follower(node) => make_candidate(node.common),
+            RaftNode::Leader(node) => make_candidate(node.common),
+            RaftNode::Candidate(_) | RaftNode::Learner(_) => Ok(self),
+        }
+    }
+
+    /// Transition from Candidate to Leader (won election)
+    fn transition_leader(self) -> Result<Self> {
+        if let RaftNode::Candidate(node) = self {
+            let members = node.common.meta.members();
+            let last_log_index = node.common.meta.log_id();
+
+            // Initialize leader state
+            let mut next_index = std::collections::HashMap::new();
+            let mut match_index = std::collections::HashMap::new();
+
+            for member in members {
+                if member != node.common.endpoint {
+                    next_index.insert(member.clone(), last_log_index + 1);
+                    match_index.insert(member, 0);
+                }
+            }
+
+            info!("Node {} became leader for term {}", node.common.endpoint.id(), node.state.term);
+
+            Ok(RaftNode::Leader(NodeData {
+                common: node.common,
+                state: Leader {
+                    term: node.state.term,
+                    next_index,
+                    match_index,
+                },
+            }))
+        } else {
+            Ok(self)
+        }
+    }
+
+    /// Transition from Candidate to Follower (lost election or discovered higher term)
+    fn transition_follower(self, new_term: u64, leader: Endpoint) -> Result<Self> {
+        match self {
+            RaftNode::Candidate(mut node) => {
+                if new_term > node.state.term() {
+                    node.common.meta.set_term(new_term)?;
+                }
+
+                Ok(RaftNode::Follower(NodeData {
+                    common: node.common,
+                    state: Follower {
+                        term: new_term,
+                        leader,
+                        voted_for: None,
+                    },
+                }))
+            }
+            RaftNode::Leader(mut node) => {
+                if new_term > node.state.term() {
+                    node.common.meta.set_term(new_term)?;
+                }
+
+                Ok(RaftNode::Follower(NodeData {
+                    common: node.common,
+                    state: Follower {
+                        term: new_term,
+                        leader,
+                        voted_for: None,
+                    },
+                }))
+            }
+            // Already follower or learner
+            other => Ok(other),
+        }
+    }
+}
+
+impl RaftNode {
     pub fn new(endpoint: Endpoint, config: Config) -> Result<Self> {
         let meta = PersistentMeta::new(&config)?;
         let term = meta.term();
@@ -128,97 +221,6 @@ impl RaftNode {
         self.common_mut().meta.update_members(endpoints)?;
         self.init_rpc_clients().await?;
         Ok(())
-    }
-
-    /// Transition from Follower to Candidate (election timeout)
-    pub fn transition_candidate(self) -> Result<Self> {
-        fn make_candidate(mut common: CommonData) -> Result<RaftNode> {
-            let new_term = common.meta.next_term()?;
-            let id = common.endpoint.id();
-
-            Ok(RaftNode::Candidate(NodeData {
-                common,
-                state: Candidate {
-                    term: new_term,
-                    votes_received: 1,
-                    voted_for: id,
-                },
-            }))
-        }
-
-        match self {
-            RaftNode::Follower(node) => make_candidate(node.common),
-            RaftNode::Leader(node) => make_candidate(node.common),
-            RaftNode::Candidate(_) | RaftNode::Learner(_) => Ok(self),
-        }
-    }
-
-    /// Transition from Candidate to Leader (won election)
-    pub fn transition_leader(self) -> Result<Self> {
-        if let RaftNode::Candidate(node) = self {
-            let members = node.common.meta.members();
-            let last_log_index = node.common.meta.log_id();
-
-            // Initialize leader state
-            let mut next_index = std::collections::HashMap::new();
-            let mut match_index = std::collections::HashMap::new();
-
-            for member in members {
-                if member != node.common.endpoint {
-                    next_index.insert(member.clone(), last_log_index + 1);
-                    match_index.insert(member, 0);
-                }
-            }
-
-            info!("Node {} became leader for term {}", node.common.endpoint.id(), node.state.term);
-
-            Ok(RaftNode::Leader(NodeData {
-                common: node.common,
-                state: Leader {
-                    term: node.state.term,
-                    next_index,
-                    match_index,
-                },
-            }))
-        } else {
-            Ok(self)
-        }
-    }
-
-    /// Transition from Candidate to Follower (lost election or discovered higher term)
-    pub fn transition_follower(self, new_term: u64, leader: Endpoint) -> Result<Self> {
-        match self {
-            RaftNode::Candidate(mut node) => {
-                if new_term > node.state.term() {
-                    node.common.meta.set_term(new_term)?;
-                }
-
-                Ok(RaftNode::Follower(NodeData {
-                    common: node.common,
-                    state: Follower {
-                        term: new_term,
-                        leader,
-                        voted_for: None,
-                    },
-                }))
-            }
-            RaftNode::Leader(mut node) => {
-                if new_term > node.state.term() {
-                    node.common.meta.set_term(new_term)?;
-                }
-
-                Ok(RaftNode::Follower(NodeData {
-                    common: node.common,
-                    state: Follower {
-                        term: new_term,
-                        leader,
-                        voted_for: None,
-                    },
-                }))
-            }
-            // Already follower or learner
-            other => Ok(other),
-        }
     }
 
     pub async fn submit(&self, _cmd: CmdReq) -> CmdResp {
