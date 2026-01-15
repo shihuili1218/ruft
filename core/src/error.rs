@@ -10,6 +10,7 @@ pub enum RuftError {
     Storage(String),
     InvalidState(String),
     Serialization(String),
+    Unknown(String),
 }
 
 impl fmt::Display for RuftError {
@@ -20,6 +21,7 @@ impl fmt::Display for RuftError {
             RuftError::Storage(msg) => write!(f, "Storage error: {}", msg),
             RuftError::InvalidState(msg) => write!(f, "Invalid state: {}", msg),
             RuftError::Serialization(msg) => write!(f, "Serialization error: {}", msg),
+            RuftError::Unknown(msg) => write!(f, "Serialization error: {}", msg),
         }
     }
 }
