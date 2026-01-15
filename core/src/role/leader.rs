@@ -1,4 +1,4 @@
-use crate::role::state::RaftState;
+use crate::role::state::Role;
 use crate::rpc::Endpoint;
 use std::collections::HashMap;
 use std::fmt::Display;
@@ -14,7 +14,7 @@ pub struct Leader {
     pub match_index: HashMap<Endpoint, u64>,
 }
 
-impl RaftState for Leader {
+impl Role for Leader {
     fn term(&self) -> u64 {
         self.term
     }

@@ -1,4 +1,4 @@
-use crate::role::state::RaftState;
+use crate::role::state::Role;
 use crate::rpc::Endpoint;
 use std::fmt::Display;
 
@@ -9,7 +9,7 @@ pub struct Learner {
     pub leader: Endpoint,
 }
 
-impl RaftState for Learner {
+impl Role for Learner {
     fn term(&self) -> u64 {
         self.term
     }

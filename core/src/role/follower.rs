@@ -1,4 +1,4 @@
-use crate::role::state::RaftState;
+use crate::role::state::Role;
 use crate::rpc::Endpoint;
 use std::fmt::Display;
 
@@ -10,7 +10,7 @@ pub struct Follower {
     pub voted_for: Option<u64>,
 }
 
-impl RaftState for Follower {
+impl Role for Follower {
     fn term(&self) -> u64 {
         self.term
     }

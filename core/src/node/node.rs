@@ -1,6 +1,6 @@
 use crate::node::meta::PersistentMeta;
 use crate::repeat_timer::{RepeatTimer, RepeatTimerHandle};
-use crate::role::{Candidate, Follower, Leader, Learner, RaftState};
+use crate::role::{Candidate, Follower, Leader, Learner, Role};
 use crate::rpc::client::{init_remote_client, RemoteClient};
 use crate::rpc::command::{CmdReq, CmdResp};
 use crate::rpc::server::run_server;
@@ -14,7 +14,7 @@ use tokio::sync::Mutex;
 use tracing::{error, info};
 
 /// Common data shared across all states
-struct CommonData {
+struct Data {
     endpoint: Endpoint,
     meta: PersistentMeta,
     config: Config,
@@ -22,108 +22,101 @@ struct CommonData {
     timer: Option<RepeatTimerHandle>,
 }
 
-/// Type-safe node with specific state
-/// Each state (Follower, Candidate, Leader, Learner) has its own data
-struct NodeData<S: RaftState> {
-    common: CommonData,
-    pub state: S,
-}
-
 /// Runtime representation of a Raft node
 /// Uses enum to allow state transitions while maintaining type safety per state
-pub enum RaftNode {
-    Follower(NodeData<Follower>),
-    Candidate(NodeData<Candidate>),
-    Leader(NodeData<Leader>),
-    Learner(NodeData<Learner>),
+enum RaftNode {
+    Follower(Data, Follower),
+    Candidate(Data, Candidate),
+    Leader(Data, Leader),
+    Learner(Data, Learner),
 }
 
 impl RaftNode {
     /// Transition from Follower to Candidate (election timeout)
-    fn transition_candidate(self) -> Result<Self> {
-        fn make_candidate(mut common: CommonData) -> Result<RaftNode> {
+    fn make_candidate(self) -> Result<Self> {
+        fn make_candidate(mut common: Data) -> Result<RaftNode> {
             let new_term = common.meta.next_term()?;
             let id = common.endpoint.id();
 
-            Ok(RaftNode::Candidate(NodeData {
+            Ok(RaftNode::Candidate(
                 common,
-                state: Candidate {
+                Candidate {
                     term: new_term,
                     votes_received: 1,
                     voted_for: id,
                 },
-            }))
+            ))
         }
 
         match self {
-            RaftNode::Follower(node) => make_candidate(node.common),
-            RaftNode::Leader(node) => make_candidate(node.common),
-            RaftNode::Candidate(_) | RaftNode::Learner(_) => Ok(self),
+            RaftNode::Follower(data, node) => make_candidate(data),
+            RaftNode::Leader(data, node) => make_candidate(data),
+            RaftNode::Candidate(..) | RaftNode::Learner(..) => Ok(self),
         }
     }
 
     /// Transition from Candidate to Leader (won election)
-    fn transition_leader(self) -> Result<Self> {
-        if let RaftNode::Candidate(node) = self {
-            let members = node.common.meta.members();
-            let last_log_index = node.common.meta.log_id();
+    fn make_leader(self) -> Result<Self> {
+        if let RaftNode::Candidate(data, node) = self {
+            let members = data.meta.members();
+            let last_log_index = data.meta.log_id();
 
             // Initialize leader state
             let mut next_index = std::collections::HashMap::new();
             let mut match_index = std::collections::HashMap::new();
 
             for member in members {
-                if member != node.common.endpoint {
+                if member != data.endpoint {
                     next_index.insert(member.clone(), last_log_index + 1);
                     match_index.insert(member, 0);
                 }
             }
 
-            info!("Node {} became leader for term {}", node.common.endpoint.id(), node.state.term);
+            info!("Node {} became leader for term {}", data.endpoint.id(), node.term);
 
-            Ok(RaftNode::Leader(NodeData {
-                common: node.common,
-                state: Leader {
-                    term: node.state.term,
+            Ok(RaftNode::Leader(
+                data,
+                Leader {
+                    term: node.term,
                     next_index,
                     match_index,
                 },
-            }))
+            ))
         } else {
             Ok(self)
         }
     }
 
     /// Transition from Candidate to Follower (lost election or discovered higher term)
-    fn transition_follower(self, new_term: u64, leader: Endpoint) -> Result<Self> {
+    fn make_follower(self, new_term: u64, leader: Endpoint) -> Result<Self> {
         match self {
-            RaftNode::Candidate(mut node) => {
-                if new_term > node.state.term() {
-                    node.common.meta.set_term(new_term)?;
+            RaftNode::Candidate(mut data, node) => {
+                if new_term > node.term() {
+                    data.meta.set_term(new_term)?;
                 }
 
-                Ok(RaftNode::Follower(NodeData {
-                    common: node.common,
-                    state: Follower {
+                Ok(RaftNode::Follower(
+                    data,
+                    Follower {
                         term: new_term,
                         leader,
                         voted_for: None,
                     },
-                }))
+                ))
             }
-            RaftNode::Leader(mut node) => {
-                if new_term > node.state.term() {
-                    node.common.meta.set_term(new_term)?;
+            RaftNode::Leader(mut data, node) => {
+                if new_term > node.term() {
+                    data.meta.set_term(new_term)?;
                 }
 
-                Ok(RaftNode::Follower(NodeData {
-                    common: node.common,
-                    state: Follower {
+                Ok(RaftNode::Follower(
+                    data,
+                    Follower {
                         term: new_term,
                         leader,
                         voted_for: None,
                     },
-                }))
+                ))
             }
             // Already follower or learner
             other => Ok(other),
@@ -136,7 +129,7 @@ impl RaftNode {
         let meta = PersistentMeta::new(&config)?;
         let term = meta.term();
 
-        let common = CommonData {
+        let common = Data {
             endpoint: endpoint.clone(),
             meta,
             config,
@@ -146,50 +139,50 @@ impl RaftNode {
 
         // Start as Follower with a dummy leader (will be updated on first heartbeat)
         let dummy_leader = endpoint;
-        Ok(RaftNode::Follower(NodeData {
+        Ok(RaftNode::Follower(
             common,
-            state: Follower {
+            Follower {
                 term,
                 leader: dummy_leader,
                 voted_for: None,
             },
-        }))
+        ))
     }
 
     /// Get common data regardless of current state
-    fn common(&self) -> &CommonData {
+    fn common(&self) -> &Data {
         match self {
-            RaftNode::Follower(node) => &node.common,
-            RaftNode::Candidate(node) => &node.common,
-            RaftNode::Leader(node) => &node.common,
-            RaftNode::Learner(node) => &node.common,
+            RaftNode::Follower(data, _) => data,
+            RaftNode::Candidate(data, _) => data,
+            RaftNode::Leader(data, _) => data,
+            RaftNode::Learner(data, _) => data,
         }
     }
 
-    fn common_mut(&mut self) -> &mut CommonData {
+    fn common_mut(&mut self) -> &mut Data {
         match self {
-            RaftNode::Follower(node) => &mut node.common,
-            RaftNode::Candidate(node) => &mut node.common,
-            RaftNode::Leader(node) => &mut node.common,
-            RaftNode::Learner(node) => &mut node.common,
+            RaftNode::Follower(data, _) => data,
+            RaftNode::Candidate(data, _) => data,
+            RaftNode::Leader(data, _) => data,
+            RaftNode::Learner(data, _) => data,
         }
     }
 
     pub fn current_term(&self) -> u64 {
         match self {
-            RaftNode::Follower(node) => node.state.term(),
-            RaftNode::Candidate(node) => node.state.term(),
-            RaftNode::Leader(node) => node.state.term(),
-            RaftNode::Learner(node) => node.state.term(),
+            RaftNode::Follower(_, node) => node.term(),
+            RaftNode::Candidate(_, node) => node.term(),
+            RaftNode::Leader(_, node) => node.term(),
+            RaftNode::Learner(_, node) => node.term(),
         }
     }
 
     pub fn state_name(&self) -> &'static str {
         match self {
-            RaftNode::Follower(_) => "Follower",
-            RaftNode::Candidate(_) => "Candidate",
-            RaftNode::Leader(_) => "Leader",
-            RaftNode::Learner(_) => "Learner",
+            RaftNode::Follower(..) => "Follower",
+            RaftNode::Candidate(..) => "Candidate",
+            RaftNode::Leader(..) => "Leader",
+            RaftNode::Learner(..) => "Learner",
         }
     }
 
@@ -226,15 +219,13 @@ impl RaftNode {
     pub async fn submit(&self, _cmd: CmdReq) -> CmdResp {
         // Only leader can process commands
         match self {
-            RaftNode::Leader(_) => {
+            RaftNode::Leader(..) => {
                 // TODO: Implement log replication
                 CmdResp::Success { data: None }
             }
-            RaftNode::Follower(node) => {
+            RaftNode::Follower(data, node) => {
                 // Redirect to leader
-                CmdResp::NotLeader {
-                    leader: Some(node.state.leader.clone()),
-                }
+                CmdResp::NotLeader { leader: Some(node.leader.clone()) }
             }
             _ => CmdResp::NotLeader { leader: None },
         }
@@ -254,8 +245,8 @@ impl Node {
     }
 
     pub async fn start(self: Arc<Self>) -> Result<()> {
-        // Initialize RPC clients
         {
+            // Initialize RPC clients
             let guard = self.inner.lock().await;
             if let Some(node) = guard.as_ref() {
                 node.init_rpc_clients().await?;
@@ -283,9 +274,9 @@ impl Node {
                     let guard = node.inner.lock().await;
                     if let Some(raft_node) = guard.as_ref() {
                         match raft_node {
-                            RaftNode::Candidate(_) => Duration::from_millis(rand::thread_rng().gen_range(150..300)),
-                            RaftNode::Follower(_) | RaftNode::Learner(_) => Duration::from_millis(raft_node.common().config.heartbeat_interval_millis + 50),
-                            RaftNode::Leader(_) => Duration::from_millis(raft_node.common().config.heartbeat_interval_millis),
+                            RaftNode::Candidate(..) => Duration::from_millis(rand::thread_rng().gen_range(150..300)),
+                            RaftNode::Follower(..) | RaftNode::Learner(..) => Duration::from_millis(raft_node.common().config.heartbeat_interval_millis + 50),
+                            RaftNode::Leader(..) => Duration::from_millis(raft_node.common().config.heartbeat_interval_millis),
                         }
                     } else {
                         Duration::from_millis(1000)
@@ -300,14 +291,15 @@ impl Node {
                     // Take ownership of the node for state transitions
                     if let Some(current_node) = guard.take() {
                         match current_node {
-                            RaftNode::Candidate(_) => {
+                            RaftNode::Candidate(..) => {
                                 info!("Election timeout, starting new election");
+
                                 // TODO: Send RequestVote RPCs
                                 *guard = Some(current_node);
                             }
-                            RaftNode::Follower(_) => {
+                            RaftNode::Follower(..) => {
                                 info!("Heartbeat timeout, becoming candidate");
-                                match current_node.transition_candidate() {
+                                match current_node.make_candidate() {
                                     Ok(new_node) => {
                                         *guard = Some(new_node);
                                     }
@@ -319,13 +311,13 @@ impl Node {
                                     }
                                 }
                             }
-                            RaftNode::Leader(_) => {
+                            RaftNode::Leader(..) => {
                                 // Send heartbeat
                                 info!("Sending heartbeat");
                                 // TODO: Send AppendEntries RPCs
                                 *guard = Some(current_node);
                             }
-                            RaftNode::Learner(_) => {
+                            RaftNode::Learner(..) => {
                                 // Learner does nothing on timeout
                                 *guard = Some(current_node);
                             }

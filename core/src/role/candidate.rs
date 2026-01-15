@@ -1,4 +1,4 @@
-use crate::role::state::RaftState;
+use crate::role::state::Role;
 use std::fmt::Display;
 
 /// Candidate state: requesting votes to become leader
@@ -9,7 +9,7 @@ pub struct Candidate {
     pub voted_for: u8,
 }
 
-impl RaftState for Candidate {
+impl Role for Candidate {
     fn term(&self) -> u64 {
         self.term
     }
