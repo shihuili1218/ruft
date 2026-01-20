@@ -72,10 +72,13 @@ impl RuftRpc for RuftServer {
     async fn append_entries(&self, request: Request<AppendEntriesRequest>) -> Result<Response<AppendEntriesResponse>, Status> {
         let req = request.into_inner();
 
+        let leader_id = req.leader_id.try_into()
+            .map_err(|_| Status::invalid_argument("leader_id out of range"))?;
+
         // Call domain layer (entries conversion TODO)
         let (success, _match_index, term) = self.node
             .on_append_entries(
-                req.leader_id,
+                leader_id,
                 req.term,
                 req.prev_log_index,
                 req.prev_log_term,

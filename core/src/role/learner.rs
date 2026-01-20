@@ -1,12 +1,14 @@
-use crate::role::state::Role;
+use crate::role::state::{Role, Common};
 use crate::rpc::Endpoint;
 use std::fmt::Display;
+use std::sync::Arc;
 
 /// Learner state: non-voting member that only receives log replication
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Learner {
     pub term: u64,
     pub leader: Endpoint,
+    pub common: Arc<Common>,
 }
 
 impl Role for Learner {

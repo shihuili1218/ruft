@@ -1,5 +1,5 @@
 mod config;
-mod meta;
+pub(crate) mod meta;
 pub(crate) mod node; // fixme: pub for rpc
 mod ruft;
 

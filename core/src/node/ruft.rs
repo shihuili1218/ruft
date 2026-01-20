@@ -49,7 +49,7 @@ impl Ruft {
     /// This is a joint-consensus operation in standard Raft.
     /// For now, it's a simple replacement.
     pub async fn update_members(&self, endpoints: Vec<Endpoint>) -> crate::Result<()> {
-        self.inner.update_members(endpoints).await
+        todo!()
     }
 
     /// Get the current term

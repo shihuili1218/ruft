@@ -106,11 +106,6 @@ impl PersistentMeta {
         self.data.members.clone()
     }
 
-    pub fn update_members(&mut self, members: Vec<Endpoint>) -> Result<()> {
-        self.data.members = members;
-        self.persist()
-    }
-
     pub fn get_member(&self, id: u8) -> Result<Endpoint> {
         let endpoint = self.data.members.iter().find(|e| e.id() == id).cloned();
         endpoint.ok_or(RuftError::Unknown(format!("Member not found: {}", id)))
