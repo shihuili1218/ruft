@@ -35,8 +35,11 @@ impl RuftRpc for RuftServer {
     async fn pre_vote(&self, request: Request<PreVoteRequest>) -> Result<Response<PreVoteResponse>, Status> {
         let req = request.into_inner();
 
+        let candidate_id = req.candidate_id.try_into()
+            .map_err(|_| Status::invalid_argument("candidate_id out of range"))?;
+
         let (vote_granted, term) = self.node
-            .pre_vote(req.candidate_id, req.term, req.last_log_index, req.last_log_term)
+            .on_pre_vote(candidate_id, req.term, req.last_log_index, req.last_log_term)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
@@ -50,9 +53,12 @@ impl RuftRpc for RuftServer {
     async fn request_vote(&self, request: Request<RequestVoteRequest>) -> Result<Response<RequestVoteResponse>, Status> {
         let req = request.into_inner();
 
+        let candidate_id = req.candidate_id.try_into()
+            .map_err(|_| Status::invalid_argument("candidate_id out of range"))?;
+
         // Call domain layer
         let (vote_granted, term) = self.node
-            .vote(req.candidate_id, req.term, req.last_log_index, req.last_log_term)
+            .on_vote(candidate_id, req.term, req.last_log_index, req.last_log_term)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
@@ -68,7 +74,7 @@ impl RuftRpc for RuftServer {
 
         // Call domain layer (entries conversion TODO)
         let (success, _match_index, term) = self.node
-            .append_entries(
+            .on_append_entries(
                 req.leader_id,
                 req.term,
                 req.prev_log_index,

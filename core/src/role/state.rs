@@ -1,3 +1,4 @@
+
 /// Marker trait for valid Raft node states.
 /// This enables the typestate pattern: RaftNode<S: RaftState>
 pub trait Role: Sized {

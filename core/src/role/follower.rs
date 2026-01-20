@@ -7,7 +7,6 @@ use std::fmt::Display;
 pub struct Follower {
     pub term: u64,
     pub leader: Endpoint,
-    pub voted_for: Option<u64>,
 }
 
 impl Role for Follower {
