@@ -6,6 +6,7 @@ pub struct Config {
     pub origin_endpoint: Vec<Endpoint>,
     pub data_dir: String,
     pub heartbeat_interval_millis: u64,
+    pub rpc_timeout_millis: u64,
 }
 
 impl Config {
@@ -44,6 +45,7 @@ impl Default for Config {
             origin_endpoint: vec![],
             data_dir: "/tmp/ruft".into(),
             heartbeat_interval_millis: 3000,
+            rpc_timeout_millis: 100,
         }
     }
 }
@@ -53,7 +55,8 @@ impl Default for Config {
 pub struct ConfigBuilder {
     endpoints: Vec<Endpoint>,
     data_dir: Option<String>,
-    heartbeat_interval: Option<u64>,
+    heartbeat_interval_millis: Option<u64>,
+    rpc_timeout_millis: Option<u64>,
 }
 
 impl ConfigBuilder {
@@ -81,7 +84,13 @@ impl ConfigBuilder {
 
     /// Set the heartbeat interval in milliseconds
     pub fn heartbeat_interval(mut self, millis: u64) -> Self {
-        self.heartbeat_interval = Some(millis);
+        self.heartbeat_interval_millis = Some(millis);
+        self
+    }
+
+    /// Set the single-rcp timeout in milliseconds
+    pub fn rpc_timeout(mut self, millis: u64) -> Self {
+        self.rpc_timeout_millis = Some(millis);
         self
     }
 
@@ -90,7 +99,8 @@ impl ConfigBuilder {
         Config {
             origin_endpoint: self.endpoints,
             data_dir: self.data_dir.unwrap_or_else(|| "/tmp/ruft".into()),
-            heartbeat_interval_millis: self.heartbeat_interval.unwrap_or(3000),
+            heartbeat_interval_millis: self.heartbeat_interval_millis.unwrap_or(3000),
+            rpc_timeout_millis: self.rpc_timeout_millis.unwrap_or(100),
         }
     }
 }
@@ -101,8 +111,8 @@ mod tests {
 
     #[test]
     fn test_config_builder() {
-        let ep1 = Endpoint::new(1, "localhost".into(), 5001);
-        let ep2 = Endpoint::new(2, "localhost".into(), 5002);
+        let ep1 = Endpoint::new_voter(1, "localhost".into(), 5001);
+        let ep2 = Endpoint::new_voter(2, "localhost".into(), 5002);
 
         let config = Config::builder().add_member(ep1).add_member(ep2).data_dir("/var/lib/raft").heartbeat_interval(1000).build();
 

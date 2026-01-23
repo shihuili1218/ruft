@@ -6,11 +6,12 @@ pub struct Endpoint {
     id: u8,
     host: String,
     port: u16,
+    is_voting: bool,
 }
 
 impl Endpoint {
-    pub fn new(id: u8, host: String, port: u16) -> Self {
-        Endpoint { id, host, port }
+    pub fn new_voter(id: u8, host: String, port: u16) -> Self {
+        Endpoint { id, host, port, is_voting: true }
     }
 
     pub fn id(&self) -> u8 {
@@ -27,6 +28,10 @@ impl Endpoint {
 
     pub fn url(&self) -> String {
         format!("http://{}:{}", self.host, self.port)
+    }
+
+    pub fn is_voting(&self) -> bool {
+        self.is_voting
     }
 }
 

@@ -15,6 +15,7 @@ pub trait RaftRpcClient {
     async fn pre_vote(&mut self, term: u64, candidate_id: u64, last_log_id: u64, last_log_term: u64) -> Result<PreVoteResponse, Box<dyn std::error::Error>>;
 }
 
+#[derive(Clone)]
 pub struct RemoteClient {
     client: RuftRpcClient<Channel>,
 }

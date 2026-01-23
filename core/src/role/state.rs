@@ -18,5 +18,6 @@ pub struct Common {
     pub endpoint: Endpoint,
     pub meta: Arc<Mutex<PersistentMeta>>,
     pub config: Config,
-    pub remote_clients: Arc<DashMap<Endpoint, RemoteClient>>,
+    pub voting_clients: Arc<DashMap<Endpoint, RemoteClient>>,
+    pub non_voting_clients: Arc<DashMap<Endpoint, RemoteClient>>,
 }

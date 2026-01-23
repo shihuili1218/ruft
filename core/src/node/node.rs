@@ -1,10 +1,10 @@
 use crate::node::meta::PersistentMeta;
 use crate::repeat_timer::RepeatTimer;
-use crate::role::{Candidate, Follower, Leader, Learner, Role, Common};
+use crate::role::{Candidate, Common, Follower, Leader, Learner, Role};
+use crate::rpc::Endpoint;
 use crate::rpc::client::init_remote_client;
 use crate::rpc::command::{CmdReq, CmdResp};
 use crate::rpc::server::RuftServer;
-use crate::rpc::Endpoint;
 use crate::{Config, Result, RuftError};
 use dashmap::DashMap;
 use rand::Rng;
@@ -66,7 +66,8 @@ impl Node {
             endpoint: endpoint.clone(),
             meta: Arc::new(Mutex::new(meta)),
             config,
-            remote_clients: Arc::new(DashMap::new()),
+            voting_clients: Arc::new(DashMap::new()),
+            non_voting_clients: Arc::new(DashMap::new()),
         });
 
         // Start as Follower
@@ -100,7 +101,8 @@ impl Node {
         let node = guard.as_ref().ok_or(RuftError::InvalidState("Node shutting down".into()))?;
 
         let common = node.common();
-        common.remote_clients.clear();
+        common.voting_clients.clear();
+        common.non_voting_clients.clear();
 
         let meta = common.meta.lock().await;
         let members = meta.members();
@@ -113,7 +115,11 @@ impl Node {
 
             match init_remote_client(&endpoint).await {
                 Ok(client) => {
-                    common.remote_clients.insert(endpoint, client);
+                    if endpoint.is_voting() {
+                        common.voting_clients.insert(endpoint, client);
+                    } else {
+                        common.non_voting_clients.insert(endpoint, client);
+                    }
                 }
                 Err(e) => {
                     error!("Failed to init remote client for {}: {}", endpoint, e);
@@ -132,23 +138,7 @@ impl Node {
             "raft_timer".to_string(),
             move || {
                 let node = node_for_delay.clone();
-                Box::pin(async move {
-                    let guard = node.inner.lock().await;
-                    if let Some(raft_node) = guard.as_ref() {
-                        let interval = raft_node.common().config.heartbeat_interval_millis;
-                        match raft_node {
-                            RaftNode::Candidate(..) => {
-                                Duration::from_millis(rand::thread_rng().gen_range(150..300))
-                            }
-                            RaftNode::Follower(..) | RaftNode::Learner(..) => {
-                                Duration::from_millis(interval + 50)
-                            }
-                            RaftNode::Leader(..) => Duration::from_millis(interval),
-                        }
-                    } else {
-                        Duration::from_millis(1000)
-                    }
-                })
+                Box::pin(async move { node.timer_interval().await })
             },
             move || {
                 let node = node_for_task.clone();
@@ -162,6 +152,20 @@ impl Node {
         std::mem::forget(timer);
     }
 
+    async fn timer_interval(&self) -> Duration {
+        let guard = self.inner.lock().await;
+        if let Some(raft_node) = guard.as_ref() {
+            let interval = raft_node.common().config.heartbeat_interval_millis;
+            match raft_node {
+                RaftNode::Candidate(..) => Duration::from_millis(rand::thread_rng().gen_range(150..300)),
+                RaftNode::Follower(..) | RaftNode::Learner(..) => Duration::from_millis(interval + 50),
+                RaftNode::Leader(..) => Duration::from_millis(interval),
+            }
+        } else {
+            Duration::from_millis(1000)
+        }
+    }
+
     async fn on_timer_tick(&self) {
         let mut guard = self.inner.lock().await;
         let current_node = match guard.take() {
@@ -170,9 +174,10 @@ impl Node {
         };
 
         let new_node = match current_node {
-            RaftNode::Candidate(candidate) => {
+            RaftNode::Candidate(mut candidate) => {
                 info!("Election timeout for term {}, restarting election", candidate.term);
-                // TODO: Send RequestVote RPCs
+                // candidate.request_vote().await;
+
                 RaftNode::Candidate(candidate)
             }
             RaftNode::Follower(follower) => {
@@ -207,11 +212,9 @@ impl Node {
                 // TODO: Implement log replication
                 CmdResp::Success { data: None }
             }
-            Some(RaftNode::Follower(follower)) => {
-                CmdResp::NotLeader {
-                    leader: Some(follower.leader.clone()),
-                }
-            }
+            Some(RaftNode::Follower(follower)) => CmdResp::NotLeader {
+                leader: Some(follower.leader.clone()),
+            },
             Some(_) => CmdResp::NotLeader { leader: None },
             None => CmdResp::Rejected {
                 code: crate::rpc::command::ErrorCode::Internal,
@@ -227,35 +230,22 @@ impl Node {
 
     pub async fn state_name(&self) -> String {
         let guard = self.inner.lock().await;
-        guard
-            .as_ref()
-            .map(|n| n.state_name().to_string())
-            .unwrap_or_else(|| "Shutdown".to_string())
+        guard.as_ref().map(|n| n.state_name().to_string()).unwrap_or_else(|| "Shutdown".to_string())
     }
 }
 
 /// RPC handlers
 impl Node {
     /// Handle RequestVote RPC
-    pub async fn on_vote(
-        &self,
-        candidate_id: u8,
-        candidate_term: u64,
-        last_log_index: u64,
-        last_log_term: u64,
-    ) -> Result<(bool, u64)> {
+    pub async fn on_vote(&self, candidate_id: u8, candidate_term: u64, last_log_index: u64, last_log_term: u64) -> Result<(bool, u64)> {
         // Pre-vote check
-        let (can_vote, current_term) =
-            self.on_pre_vote(candidate_id, candidate_term, last_log_index, last_log_term)
-                .await?;
+        let (can_vote, current_term) = self.on_pre_vote(candidate_id, candidate_term, last_log_index, last_log_term).await?;
         if !can_vote {
             return Ok((false, current_term));
         }
 
         let mut guard = self.inner.lock().await;
-        let current_node = guard
-            .take()
-            .ok_or(RuftError::InvalidState("Node shutting down".into()))?;
+        let current_node = guard.take().ok_or(RuftError::InvalidState("Node shutting down".into()))?;
 
         // Learner never votes
         if matches!(current_node, RaftNode::Learner(..)) {
@@ -304,17 +294,9 @@ impl Node {
     }
 
     /// Handle PreVote RPC
-    pub async fn on_pre_vote(
-        &self,
-        _candidate_id: u8,
-        candidate_term: u64,
-        last_log_index: u64,
-        last_log_term: u64,
-    ) -> Result<(bool, u64)> {
+    pub async fn on_pre_vote(&self, _candidate_id: u8, candidate_term: u64, last_log_index: u64, last_log_term: u64) -> Result<(bool, u64)> {
         let guard = self.inner.lock().await;
-        let node = guard
-            .as_ref()
-            .ok_or(RuftError::InvalidState("Node shutting down".into()))?;
+        let node = guard.as_ref().ok_or(RuftError::InvalidState("Node shutting down".into()))?;
 
         if matches!(node, RaftNode::Learner(..)) {
             return Ok((false, node.current_term()));
@@ -341,19 +323,9 @@ impl Node {
     }
 
     /// Handle AppendEntries RPC
-    pub async fn on_append_entries(
-        &self,
-        leader_id: u8,
-        leader_term: u64,
-        prev_log_index: u64,
-        prev_log_term: u64,
-        entries: Vec<()>,
-        leader_commit: u64,
-    ) -> Result<(bool, u64, u64)> {
+    pub async fn on_append_entries(&self, leader_id: u8, leader_term: u64, prev_log_index: u64, prev_log_term: u64, entries: Vec<()>, leader_commit: u64) -> Result<(bool, u64, u64)> {
         let mut guard = self.inner.lock().await;
-        let current_node = guard
-            .take()
-            .ok_or(RuftError::InvalidState("Node shutting down".into()))?;
+        let current_node = guard.take().ok_or(RuftError::InvalidState("Node shutting down".into()))?;
 
         let current_term = current_node.current_term();
 
@@ -373,14 +345,7 @@ impl Node {
         let (new_node, success, match_idx) = match current_node {
             RaftNode::Follower(mut follower) => {
                 let (success, idx) = follower
-                    .handle_append_entries(
-                        leader_term,
-                        leader_endpoint.clone(),
-                        prev_log_index,
-                        prev_log_term,
-                        entries,
-                        leader_commit,
-                    )
+                    .handle_append_entries(leader_term, leader_endpoint.clone(), prev_log_index, prev_log_term, entries, leader_commit)
                     .await?;
                 (RaftNode::Follower(follower), success, idx)
             }
@@ -388,14 +353,7 @@ impl Node {
                 // Discovered leader, step down
                 let mut follower = candidate.step_down(leader_term, leader_endpoint.clone());
                 let (success, idx) = follower
-                    .handle_append_entries(
-                        leader_term,
-                        leader_endpoint.clone(),
-                        prev_log_index,
-                        prev_log_term,
-                        entries,
-                        leader_commit,
-                    )
+                    .handle_append_entries(leader_term, leader_endpoint.clone(), prev_log_index, prev_log_term, entries, leader_commit)
                     .await?;
                 (RaftNode::Follower(follower), success, idx)
             }

@@ -61,6 +61,7 @@ impl Follower {
         };
 
         Ok(Candidate {
+            id: my_id as u64,
             term: new_term,
             votes_received: 1,
             voted_for: my_id,
