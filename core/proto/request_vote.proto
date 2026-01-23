@@ -10,6 +10,6 @@ message RequestVoteRequest {
 }
 
 message RequestVoteResponse {
-  uint64 term = 1;
+  uint64 committed_index = 1;
   bool vote_granted = 2;
 }

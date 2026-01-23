@@ -3,10 +3,12 @@ use crate::storage::MmapStorage;
 use crate::{Config, Result, RuftError};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use tokio::task::id;
 
 #[derive(Serialize, Deserialize, Clone)]
 struct Meta {
     initialized: bool,
+    my_id: u8,
     term: u64,
     voted_for: Option<u8>,
     last_log_id: u64,
@@ -21,16 +23,16 @@ pub struct PersistentMeta {
 }
 
 impl PersistentMeta {
-    pub fn new(config: &Config) -> Result<Self> {
+    pub fn new(my_id: u8, config: &Config) -> Result<Self> {
         let path = format!("{}/meta.bin", config.data_dir);
         let meta_path = PathBuf::from(&path);
         let storage = MmapStorage::open_or_create(meta_path, 4096).map_err(|e| RuftError::Storage(format!("Failed to open meta file {}: {}", path, e)))?;
-
         // Try to load existing data, or initialize new
         let data = storage.read_serialized::<Meta>().unwrap_or_else(|_| {
             // Initialize new meta
             Meta {
                 initialized: true,
+                my_id,
                 term: 0,
                 voted_for: None,
                 last_log_id: 0,
@@ -64,18 +66,9 @@ impl PersistentMeta {
 
     pub fn next_term(&mut self) -> Result<u64> {
         self.data.term += 1;
-        self.data.voted_for = None; // Clear vote when entering new term
+        self.data.voted_for = Some(self.data.my_id);
         self.persist()?;
         Ok(self.data.term)
-    }
-
-    pub fn set_term(&mut self, term: u64) -> Result<()> {
-        if term > self.data.term {
-            self.data.term = term;
-            self.data.voted_for = None;
-            self.persist()?;
-        }
-        Ok(())
     }
 
     pub fn term(&self) -> u64 {
@@ -108,7 +101,7 @@ impl PersistentMeta {
 
     pub fn get_member(&self, id: u8) -> Result<Endpoint> {
         let endpoint = self.data.members.iter().find(|e| e.id() == id).cloned();
-        endpoint.ok_or(RuftError::Unknown(format!("Member not found: {}", id)))
+        endpoint.ok_or(RuftError::Configuration(format!("Member not found: {}", id)))
     }
 
     pub fn voted_for(&self) -> Option<u8> {

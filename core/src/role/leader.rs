@@ -1,28 +1,27 @@
-use crate::role::state::{Role, Common};
+use crate::role::state::{Common, Role};
 use crate::role::Follower;
 use crate::rpc::Endpoint;
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::sync::Arc;
 
+pub struct Replication {
+    confirmed: u64, // 等价于 nextIndex - 1
+    match_index: u64, // 可选：用于 commit 计算
+                    // inflight: Vec<u64>,
+}
+
 /// Leader state: managing replication to followers
 #[derive(Clone)]
 pub struct Leader {
+    pub my_id: u8,
     pub term: u64,
-    pub next_index: HashMap<Endpoint, u64>,
-    pub match_index: HashMap<Endpoint, u64>,
+    pub next_index: HashMap<u8, u64>,
+    pub match_index: HashMap<u8, u64>,
     pub common: Arc<Common>,
 }
 
-impl Role for Leader {
-    fn term(&self) -> u64 {
-        self.term
-    }
-
-    fn state_name() -> &'static str {
-        "Leader"
-    }
-}
+impl Role for Leader {}
 
 impl Display for Leader {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -32,8 +31,13 @@ impl Display for Leader {
 
 /// Business logic for Leader role
 impl Leader {
-    /// Prepare heartbeat requests for all followers
-    pub async fn prepare_heartbeat_requests(&self) -> Vec<(Endpoint, HeartbeatRequest)> {
+    pub async fn become_leader(&self) {
+        // todo: probe msg: heartbeat?
+        // todo: merge log entry
+    }
+
+    /// Send AppendEntries RPCs
+    pub async fn heartbeat(&self) -> Vec<(Endpoint, HeartbeatRequest)> {
         let meta = self.common.meta.lock().await;
         let mut requests = Vec::new();
 
@@ -53,23 +57,18 @@ impl Leader {
             ));
         }
 
-        requests
+        todo!()
     }
 
     /// Handle AppendEntries response from follower
-    pub fn handle_append_response(
-        &mut self,
-        follower: Endpoint,
-        success: bool,
-        match_index: u64,
-    ) {
+    pub fn handle_append_response(&mut self, follower: Endpoint, success: bool, match_index: u64) {
         if success {
-            self.match_index.insert(follower.clone(), match_index);
-            self.next_index.insert(follower, match_index + 1);
+            self.match_index.insert(follower.id(), match_index);
+            self.next_index.insert(follower.id(), match_index + 1);
             // TODO: Update commit index if majority replicated
         } else {
             // Decrement next_index and retry
-            if let Some(next_idx) = self.next_index.get_mut(&follower) {
+            if let Some(next_idx) = self.next_index.get_mut(&follower.id()) {
                 if *next_idx > 0 {
                     *next_idx -= 1;
                 }
@@ -80,6 +79,7 @@ impl Leader {
     /// Discovered higher term - step down to Follower
     pub fn step_down(self, new_term: u64, leader: Endpoint) -> Follower {
         Follower {
+            my_id: self.my_id,
             term: new_term,
             leader,
             common: self.common,

@@ -7,10 +7,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 /// Marker trait for valid Raft node states
-pub trait Role: Sized {
-    fn term(&self) -> u64;
-    fn state_name() -> &'static str;
-}
+pub trait Role: Sized {}
 
 /// Shared data across all roles
 #[derive(Clone)]

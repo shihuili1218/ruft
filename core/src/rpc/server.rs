@@ -21,10 +21,7 @@ impl RuftServer {
         let addr = "127.0.0.1:1218".parse()?;
 
         info!("Rpc server is starting");
-        tonic::transport::Server::builder()
-            .add_service(RuftRpcServer::new(self))
-            .serve(addr)
-            .await?;
+        tonic::transport::Server::builder().add_service(RuftRpcServer::new(self)).serve(addr).await?;
         info!("Rpc server is started");
         Ok(())
     }
@@ -35,48 +32,43 @@ impl RuftRpc for RuftServer {
     async fn pre_vote(&self, request: Request<PreVoteRequest>) -> Result<Response<PreVoteResponse>, Status> {
         let req = request.into_inner();
 
-        let candidate_id = req.candidate_id.try_into()
-            .map_err(|_| Status::invalid_argument("candidate_id out of range"))?;
+        let candidate_id = req.candidate_id.try_into().map_err(|_| Status::invalid_argument("candidate_id out of range"))?;
 
-        let (vote_granted, term) = self.node
+        let (vote_granted, term) = self
+            .node
             .on_pre_vote(candidate_id, req.term, req.last_log_index, req.last_log_term)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
         // Protocol conversion: build response
-        Ok(Response::new(PreVoteResponse {
-            term,
-            vote_granted,
-        }))
+        Ok(Response::new(PreVoteResponse { term, vote_granted }))
     }
 
     async fn request_vote(&self, request: Request<RequestVoteRequest>) -> Result<Response<RequestVoteResponse>, Status> {
+
         let req = request.into_inner();
 
-        let candidate_id = req.candidate_id.try_into()
-            .map_err(|_| Status::invalid_argument("candidate_id out of range"))?;
+        let candidate_id = req.candidate_id.try_into().map_err(|_| Status::invalid_argument("candidate_id out of range"))?;
 
         // Call domain layer
-        let (vote_granted, term) = self.node
+        let (vote_granted, committed_index) = self
+            .node
             .on_vote(candidate_id, req.term, req.last_log_index, req.last_log_term)
             .await
             .map_err(|e| Status::internal(e.to_string()))?;
 
         // Protocol conversion: build response
-        Ok(Response::new(RequestVoteResponse {
-            term,
-            vote_granted,
-        }))
+        Ok(Response::new(RequestVoteResponse { committed_index, vote_granted }))
     }
 
     async fn append_entries(&self, request: Request<AppendEntriesRequest>) -> Result<Response<AppendEntriesResponse>, Status> {
         let req = request.into_inner();
 
-        let leader_id = req.leader_id.try_into()
-            .map_err(|_| Status::invalid_argument("leader_id out of range"))?;
+        let leader_id = req.leader_id.try_into().map_err(|_| Status::invalid_argument("leader_id out of range"))?;
 
         // Call domain layer (entries conversion TODO)
-        let (success, _match_index, term) = self.node
+        let (success, _match_index, term) = self
+            .node
             .on_append_entries(
                 leader_id,
                 req.term,
@@ -89,9 +81,6 @@ impl RuftRpc for RuftServer {
             .map_err(|e| Status::internal(e.to_string()))?;
 
         // Protocol conversion: build response
-        Ok(Response::new(AppendEntriesResponse {
-            term,
-            success,
-        }))
+        Ok(Response::new(AppendEntriesResponse { term, success }))
     }
 }

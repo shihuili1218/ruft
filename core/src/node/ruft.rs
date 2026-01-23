@@ -19,10 +19,10 @@ impl Ruft {
     /// Create a new Raft node
     ///
     /// # Arguments
-    /// * `endpoint` - Network endpoint for this node
+    /// * `my` - Network endpoint for this node
     /// * `config` - Configuration parameters
-    pub fn new(endpoint: Endpoint, config: Config) -> crate::Result<Self> {
-        let node = Node::new(endpoint, config)?;
+    pub fn new(my: Endpoint, config: Config) -> crate::Result<Self> {
+        let node = Node::new(my, config)?;
         Ok(Ruft { inner: Arc::new(node) })
     }
 
