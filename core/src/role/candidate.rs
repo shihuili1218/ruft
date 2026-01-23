@@ -111,12 +111,14 @@ impl Candidate {
             .voting_clients
             .iter()
             .map(|entry| {
+                let endpoint = entry.key().clone();
                 let mut client = entry.value().clone();
                 async move {
-                    tokio::time::timeout(rpc_timeout, client.request_vote(request_vote_term, id, last_log_id, last_log_term))
+                    let result = tokio::time::timeout(rpc_timeout, client.request_vote(request_vote_term, id, last_log_id, last_log_term))
                         .await
                         .map_err(|_| RuftError::Network(format!("Request vote timeout after {:?}", rpc_timeout)))
-                        .flatten()
+                        .flatten();
+                    result.map(|resp| (endpoint.id(), resp))
                 }
             })
             .collect();
@@ -127,10 +129,10 @@ impl Candidate {
 
         let mut last_committed_index: HashMap<u8, u64> = HashMap::new();
         for res in results.into_iter().filter_map(Result::ok) {
-            if res.vote_granted {
+            let (peer_id, vote_resp) = res;
+            if vote_resp.vote_granted {
                 granted = granted + 1;
-                let id = ;
-                last_committed_index.insert(id, res.committed_index);
+                last_committed_index.insert(peer_id, vote_resp.committed_index);
                 if granted >= majority {
                     return Ok(VoteResult::Won(last_committed_index));
                 }
