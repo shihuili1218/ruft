@@ -12,6 +12,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
 use tracing::{error, info};
+use crate::storage::LogStore;
 
 /// Runtime representation of a Raft node
 /// Each variant holds a complete Role with embedded Common
@@ -62,9 +63,12 @@ impl Node {
         let meta = PersistentMeta::new(my.id(), &config)?;
         let term = meta.term();
 
+        let log_store = LogStore::open(config.data_dir.clone())?;
+
         let common = Arc::new(Common {
             endpoint: my.clone(),
             meta: Arc::new(Mutex::new(meta)),
+            logs: Arc::new(log_store),
             config,
             voting_clients: Arc::new(DashMap::new()),
             non_voting_clients: Arc::new(DashMap::new()),

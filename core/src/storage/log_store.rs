@@ -1,10 +1,10 @@
 use prost::Message;
-use rocksdb::{DB, Options, WriteBatch, IteratorMode, Direction};
-use std::path::Path;
+use rocksdb::{Direction, IteratorMode, Options, WriteBatch, DB};
 use std::io;
+use std::path::{PathBuf};
 
-// Re-export the protobuf generated LogEntry
 pub use crate::rpc::LogEntry;
+use crate::RuftError;
 
 /// RocksDB-backed log storage for Raft
 ///
@@ -23,19 +23,23 @@ pub struct LogStore {
 }
 
 impl LogStore {
+    pub fn open(path: String) -> crate::Result<Self> {
+        let path = format!("{}/data", path);
+        let path = PathBuf::from(&path);
+        Self::_open(path)
+    }
     /// Open or create a log store at the given path
-    pub fn open<P: AsRef<Path>>(path: P) -> io::Result<Self> {
+    fn _open(path: PathBuf) -> crate::Result<Self> {
         let mut opts = Options::default();
         opts.create_if_missing(true);
 
         // Optimize for Raft workload
-        opts.set_write_buffer_size(64 * 1024 * 1024);  // 64MB write buffer
+        opts.set_write_buffer_size(64 * 1024 * 1024); // 64MB write buffer
         opts.set_max_write_buffer_number(3);
         opts.set_target_file_size_base(64 * 1024 * 1024);
         opts.set_compression_type(rocksdb::DBCompressionType::Lz4);
 
-        let db = DB::open(&opts, path)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+        let db = DB::open(&opts, path).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
 
         Ok(Self { db })
     }
@@ -43,18 +47,17 @@ impl LogStore {
     /// Append a log entry
     ///
     /// Note: Caller must ensure index is monotonically increasing
-    pub fn append(&self, entry: &LogEntry) -> io::Result<()> {
+    pub fn append(&self, entry: &LogEntry) -> crate::Result<()> {
         let key = Self::index_to_key(entry.index);
         let value = entry.encode_to_vec();
 
-        self.db.put(key, value)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+        self.db.put(key, value).map_err(|e| RuftError::Io(io::Error::new(io::ErrorKind::Other, e)))
     }
 
     /// Append multiple log entries in a batch
     ///
     /// Atomic operation - either all succeed or all fail
-    pub fn append_batch(&self, entries: &[LogEntry]) -> io::Result<()> {
+    pub fn append_batch(&self, entries: &[LogEntry]) -> crate::Result<()> {
         if entries.is_empty() {
             return Ok(());
         }
@@ -66,29 +69,27 @@ impl LogStore {
             batch.put(key, value);
         }
 
-        self.db.write(batch)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+        self.db.write(batch).map_err(|e| RuftError::Io(io::Error::new(io::ErrorKind::Other, e)))
     }
 
     /// Get a log entry by index
-    pub fn get(&self, index: u64) -> io::Result<Option<LogEntry>> {
+    pub fn get(&self, index: u64) -> crate::Result<Option<LogEntry>> {
         let key = Self::index_to_key(index);
 
         match self.db.get(key) {
             Ok(Some(bytes)) => {
-                let entry = LogEntry::decode(&bytes[..])
-                    .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+                let entry = LogEntry::decode(&bytes[..]).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
                 Ok(Some(entry))
             }
             Ok(None) => Ok(None),
-            Err(e) => Err(io::Error::new(io::ErrorKind::Other, e)),
+            Err(e) => Err(RuftError::Io(io::Error::new(io::ErrorKind::Other, e))),
         }
     }
 
     /// Get a range of log entries [start_index, end_index)
     ///
     /// Returns empty vec if no entries found in range
-    pub fn range(&self, start_index: u64, end_index: u64) -> io::Result<Vec<LogEntry>> {
+    pub fn range(&self, start_index: u64, end_index: u64) -> crate::Result<Vec<LogEntry>> {
         if start_index >= end_index {
             return Ok(Vec::new());
         }
@@ -100,16 +101,14 @@ impl LogStore {
         let iter = self.db.iterator(IteratorMode::From(&start_key, Direction::Forward));
 
         for item in iter {
-            let (key, value) = item
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+            let (key, value) = item.map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
 
             // Stop if we've reached the end of range
             if key.as_ref() >= end_key.as_slice() {
                 break;
             }
 
-            let entry = LogEntry::decode(&value[..])
-                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+            let entry = LogEntry::decode(&value[..]).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
             entries.push(entry);
         }
 
@@ -119,16 +118,14 @@ impl LogStore {
     /// Get the last log entry's (index, term)
     ///
     /// Returns None if log is empty
-    pub fn last(&self) -> io::Result<Option<(u64, u64)>> {
+    pub fn last(&self) -> crate::Result<Option<(u64, u64)>> {
         let mut iter = self.db.iterator(IteratorMode::End);
 
         match iter.next() {
             Some(result) => {
-                let (_key, value) = result
-                    .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+                let (_key, value) = result.map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
 
-                let entry = LogEntry::decode(&value[..])
-                    .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
+                let entry = LogEntry::decode(&value[..]).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
                 Ok(Some((entry.index, entry.term)))
             }
@@ -139,7 +136,7 @@ impl LogStore {
     /// Delete all entries with index >= from_index
     ///
     /// Used when handling conflicting entries from leader
-    pub fn truncate_suffix(&self, from_index: u64) -> io::Result<()> {
+    pub fn truncate_suffix(&self, from_index: u64) -> crate::Result<()> {
         let start_key = Self::index_to_key(from_index);
 
         // Collect keys to delete
@@ -147,8 +144,7 @@ impl LogStore {
         let iter = self.db.iterator(IteratorMode::From(&start_key, Direction::Forward));
 
         for item in iter {
-            let (key, _) = item
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+            let (key, _) = item.map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
             keys_to_delete.push(key.to_vec());
         }
 
@@ -158,8 +154,7 @@ impl LogStore {
             for key in keys_to_delete {
                 batch.delete(key);
             }
-            self.db.write(batch)
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+            self.db.write(batch).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
         }
 
         Ok(())
@@ -177,7 +172,7 @@ impl LogStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
 
     fn test_path(name: &str) -> PathBuf {
         PathBuf::from(format!("/tmp/ruft_test/{}", name))
@@ -197,7 +192,7 @@ mod tests {
         let path = test_path("append_get");
         cleanup(&path);
 
-        let store = LogStore::open(&path).unwrap();
+        let store = LogStore::_open(path).unwrap();
 
         let entry = LogEntry {
             index: 1,
@@ -220,7 +215,7 @@ mod tests {
         let path = test_path("range");
         cleanup(&path);
 
-        let store = LogStore::open(&path).unwrap();
+        let store = LogStore::_open(path).unwrap();
 
         for i in 1..=10 {
             let entry = LogEntry {
@@ -245,7 +240,7 @@ mod tests {
         let path = test_path("last");
         cleanup(&path);
 
-        let store = LogStore::open(&path).unwrap();
+        let store = LogStore::_open(path).unwrap();
 
         assert!(store.last().unwrap().is_none());
 
@@ -261,7 +256,7 @@ mod tests {
         let path = test_path("truncate");
         cleanup(&path);
 
-        let store = LogStore::open(&path).unwrap();
+        let store = LogStore::_open(path).unwrap();
 
         for i in 1..=10 {
             store.append(&LogEntry { index: i, term: 1, command: vec![] }).unwrap();
@@ -281,7 +276,7 @@ mod tests {
         let path = test_path("batch");
         cleanup(&path);
 
-        let store = LogStore::open(&path).unwrap();
+        let store = LogStore::_open(path).unwrap();
 
         let entries: Vec<LogEntry> = (1..=100)
             .map(|i| LogEntry {
@@ -304,15 +299,23 @@ mod tests {
 
         // Write data
         {
-            let store = LogStore::open(&path).unwrap();
+            let path = test_path("persistence");
+            let store = LogStore::_open(path).unwrap();
             for i in 1..=5 {
-                store.append(&LogEntry { index: i, term: 1, command: vec![i as u8] }).unwrap();
+                store
+                    .append(&LogEntry {
+                        index: i,
+                        term: 1,
+                        command: vec![i as u8],
+                    })
+                    .unwrap();
             }
         }
 
         // Reopen and verify
         {
-            let store = LogStore::open(&path).unwrap();
+            let path = test_path("persistence");
+            let store = LogStore::_open(path).unwrap();
             assert_eq!(store.last().unwrap(), Some((5, 1)));
             let entry = store.get(3).unwrap().unwrap();
             assert_eq!(entry.command, vec![3]);
