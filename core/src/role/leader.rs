@@ -14,14 +14,42 @@ pub struct Replication {
 /// Leader state: managing replication to followers
 #[derive(Clone)]
 pub struct Leader {
-    pub my_id: u8,
-    pub term: u64,
-    pub next_index: HashMap<u8, u64>,
-    pub match_index: HashMap<u8, u64>,
-    pub common: Arc<Common>,
+    my_id: u8,
+    term: u64,
+    next_index: HashMap<u8, u64>,
+    match_index: HashMap<u8, u64>,
+    common: Arc<Common>,
 }
 
-impl Role for Leader {}
+impl Leader {
+    pub fn new(my_id: u8, term: u64, match_index: HashMap<u8, u64>, common: Arc<Common>) -> Self {
+        Self {
+            my_id,
+            term,
+            next_index: HashMap::new(),
+            match_index,
+            common,
+        }
+    }
+
+    pub fn term(&self) -> u64 {
+        self.term
+    }
+}
+
+impl Role for Leader {
+    fn my_id(&self) -> u8 {
+        self.my_id
+    }
+
+    fn is_voter(&self) -> bool {
+        true
+    }
+
+    fn common(&self) -> Arc<Common> {
+        self.common.clone()
+    }
+}
 
 impl Display for Leader {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -78,12 +106,7 @@ impl Leader {
 
     /// Discovered higher term - step down to Follower
     pub fn step_down(self, new_term: u64, leader: Endpoint) -> Follower {
-        Follower {
-            my_id: self.my_id,
-            term: new_term,
-            leader,
-            common: self.common,
-        }
+        Follower::new(self.my_id, new_term, leader, self.common)
     }
 }
 

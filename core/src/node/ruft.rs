@@ -52,11 +52,6 @@ impl Ruft {
         todo!()
     }
 
-    /// Get the current term
-    pub async fn current_term(&self) -> u64 {
-        self.inner.current_term().await
-    }
-
     /// Get the current state name (Follower/Candidate/Leader/Learner)
     pub async fn state(&self) -> String {
         self.inner.state_name().await

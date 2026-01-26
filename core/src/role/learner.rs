@@ -6,13 +6,31 @@ use std::sync::Arc;
 /// Learner state: non-voting member that only receives log replication
 #[derive(Clone)]
 pub struct Learner {
-    pub my_id: u8,
-    pub term: u64,
-    pub leader: Endpoint,
-    pub common: Arc<Common>,
+    my_id: u8,
+    term: u64,
+    leader: Endpoint,
+    common: Arc<Common>,
 }
 
-impl Role for Learner {}
+impl Learner {
+    pub fn new(my_id: u8, term: u64, leader: Endpoint, common: Arc<Common>) -> Self {
+        Self { my_id, term, leader, common }
+    }
+}
+
+impl Role for Learner {
+    fn my_id(&self) -> u8 {
+        self.my_id
+    }
+
+    fn is_voter(&self) -> bool {
+        false
+    }
+
+    fn common(&self) -> Arc<Common> {
+        self.common.clone()
+    }
+}
 
 impl Display for Learner {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

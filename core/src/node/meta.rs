@@ -99,10 +99,11 @@ impl PersistentMeta {
         self.data.members.clone()
     }
 
-    pub fn get_member(&self, id: u8) -> Result<Endpoint> {
+    pub fn member(&self, id: u8) -> Result<Endpoint> {
         let endpoint = self.data.members.iter().find(|e| e.id() == id).cloned();
         endpoint.ok_or(RuftError::Configuration(format!("Member not found: {}", id)))
     }
+    
 
     pub fn voted_for(&self) -> Option<u8> {
         self.data.voted_for

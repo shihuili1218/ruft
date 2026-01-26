@@ -13,12 +13,34 @@ use std::time::Duration;
 ///
 #[derive(Clone)]
 pub struct Candidate {
-    pub my_id: u8,
-    pub pre_vote_term: u64,
-    pub common: Arc<Common>,
+    my_id: u8,
+    pre_vote_term: u64,
+    common: Arc<Common>,
 }
 
-impl Role for Candidate {}
+impl Candidate {
+    pub fn new(my_id: u8, pre_vote_term: u64, common: Arc<Common>) -> Self {
+        Self { my_id, pre_vote_term, common }
+    }
+
+    pub fn pre_vote_term(&self) -> u64 {
+        self.pre_vote_term
+    }
+
+}
+impl Role for Candidate {
+    fn my_id(&self) -> u8 {
+        self.my_id
+    }
+
+    fn is_voter(&self) -> bool {
+        true
+    }
+
+    fn common(&self) -> Arc<Common> {
+        self.common.clone()
+    }
+}
 
 impl Display for Candidate {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -42,7 +64,7 @@ impl PartialEq for VoteResult {
 
 /// Business logic for Candidate role
 impl Candidate {
-    async fn pre_vote(&mut self) -> crate::Result<bool> {
+    async fn send_pre_vote(&mut self) -> crate::Result<bool> {
         let total_nodes = self.common.voting_clients.len() + 1; // +1 for self
         let majority = (total_nodes / 2) + 1;
         let mut need_grant = majority - 1;
@@ -92,7 +114,7 @@ impl Candidate {
 
         Ok(false)
     }
-    async fn request_vote(&mut self) -> crate::Result<VoteResult> {
+    async fn send_request_vote(&mut self) -> crate::Result<VoteResult> {
         let total_nodes = self.common.voting_clients.len() + 1; // +1 for self
         let majority = (total_nodes / 2) + 1;
         let mut granted = 1; // Already voted for self
@@ -149,30 +171,19 @@ impl Candidate {
 
     /// trigger elect leader
     pub async fn do_electing(&mut self) -> crate::Result<VoteResult> {
-        let pre_vote_result = self.pre_vote().await?;
+        let pre_vote_result = self.send_pre_vote().await?;
 
-        if pre_vote_result { Ok(VoteResult::Lost) } else { self.request_vote().await }
+        if pre_vote_result { Ok(VoteResult::Lost) } else { self.send_request_vote().await }
     }
 
     /// Discovered a leader - step down to Follower
     pub fn step_down(self, leader_term: u64, leader: Endpoint) -> Follower {
-        Follower {
-            my_id: self.my_id,
-            term: leader_term,
-            leader,
-            common: self.common,
-        }
+        Follower::new(self.my_id, leader_term, leader, self.common)
     }
 
     /// Won election - become Leader
     pub async fn transition_leader(self, committed_index: HashMap<u8, u64>) -> Leader {
         let term = { self.common.meta.lock().await.term() };
-        Leader {
-            my_id: self.my_id,
-            term,
-            next_index: HashMap::new(),
-            match_index: committed_index,
-            common: self.common,
-        }
+        Leader::new(self.my_id, term, committed_index, self.common)
     }
 }
