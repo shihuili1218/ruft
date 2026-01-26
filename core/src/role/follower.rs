@@ -1,9 +1,9 @@
 use crate::role::state::{Common, Role};
 use crate::role::Candidate;
 use crate::rpc::Endpoint;
+use crate::Result;
 use std::fmt::Display;
 use std::sync::Arc;
-use crate::Result;
 
 /// Follower state: waiting for heartbeats from leader
 #[derive(Clone)]
@@ -49,17 +49,13 @@ impl Display for Follower {
 /// Business logic for Follower role
 impl Follower {
     /// Handle AppendEntries RPC from leader
-    pub async fn handle_append_entries(&mut self, leader_id: u8, leader_term: u64, prev_log_index: u64, prev_log_term: u64, entries: Vec<()>, leader_commit: u64) -> Result<AppendEntriesResult> {
+    pub async fn handle_append_entries(&mut self, leader_id: u8, leader_term: u64, prev_log_index: u64, prev_log_term: u64, entries: Vec<()>, leader_commit: u64) -> Result<(bool, u64, u64)> {
         let meta = self.common.meta.lock().await;
         let current_term = meta.term();
 
         // Reject stale term
         if leader_term < current_term {
-            return Ok(AppendEntriesResult {
-                success: false,
-                match_idx: 0,
-                term: current_term,
-            });
+            return Ok((false, 0, current_term));
         }
 
 
@@ -70,11 +66,7 @@ impl Follower {
         }
 
         // TODO: Implement log replication logic
-        Ok(AppendEntriesResult {
-            success: true,
-            match_idx: 0,
-            term: current_term,
-        })
+        Ok((true, 0, current_term))
     }
 
     pub async fn transition_candidate(self) -> Candidate {
@@ -82,8 +74,3 @@ impl Follower {
     }
 }
 
-struct AppendEntriesResult {
-    success: bool,
-    match_idx: u64,
-    term: u64,
-}

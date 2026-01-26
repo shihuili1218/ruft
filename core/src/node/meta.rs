@@ -103,13 +103,13 @@ impl PersistentMeta {
         let endpoint = self.data.members.iter().find(|e| e.id() == id).cloned();
         endpoint.ok_or(RuftError::Configuration(format!("Member not found: {}", id)))
     }
-    
+
 
     pub fn voted_for(&self) -> Option<u8> {
         self.data.voted_for
     }
 
-    pub fn set_voted_for(&mut self, term: u64, candidate_id: u8) -> Result<()> {
+    pub fn set_term(&mut self, term: u64, candidate_id: u8) -> Result<()> {
         self.data.term = term;
         self.data.voted_for = Some(candidate_id);
         self.persist()

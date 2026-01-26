@@ -4,7 +4,8 @@ use crate::role::{Candidate, Common, Follower, Leader, Learner, Role, VoteResult
 use crate::rpc::client::init_remote_client;
 use crate::rpc::command::{CmdReq, CmdResp};
 use crate::rpc::server::RuftServer;
-use crate::rpc::Endpoint;
+use crate::rpc::{AppendEntriesRequest, Endpoint};
+use crate::storage::LogStore;
 use crate::{Config, Result, RuftError};
 use dashmap::DashMap;
 use rand::Rng;
@@ -12,7 +13,6 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::Mutex;
 use tracing::{error, info};
-use crate::storage::LogStore;
 
 /// Runtime representation of a Raft node
 /// Each variant holds a complete Role with embedded Common
@@ -244,71 +244,130 @@ impl Node {
     /// Handle RequestVote RPC
     pub async fn on_vote(&self, candidate_id: u8, candidate_term: u64, last_log_index: u64, last_log_term: u64) -> Result<(bool, u64)> {
         let mut guard = self.inner.lock().await;
-        let current_node = guard.take().ok_or(RuftError::InvalidState("Node shutting down".into()))?;
-        match current_node {
+
+        // Phase 1: Check and gather decision
+        let (result, committed_index, should_step_down, leader_endpoint) = match guard.as_ref().ok_or(RuftError::InvalidState("Node shutting down".into()))? {
             RaftNode::Follower(follower) => {
                 let (result, committed_index) = follower.handle_vote(candidate_id, candidate_term, last_log_index, last_log_term).await?;
-                *guard = Some(RaftNode::Follower(follower));
-                Ok((result, committed_index))
+                (result, committed_index, false, None)
             }
             RaftNode::Candidate(candidate) => {
                 let (result, committed_index) = candidate.handle_vote(candidate_id, candidate_term, last_log_index, last_log_term).await?;
-                let new_node = if result {
-                    let leader_endpoint = {
-                        let common = candidate.common();
-                        let meta = common.meta.lock().await;
-                        meta.member(candidate_id)?
-                    };
-                    let follower = candidate.step_down(candidate_term, leader_endpoint);
-                    RaftNode::Follower(follower)
+                let leader_endpoint = if result {
+                    let common = candidate.common();
+                    let meta = common.meta.lock().await;
+                    Some(meta.member(candidate_id)?)
                 } else {
-                    RaftNode::Candidate(candidate)
+                    None
                 };
-                *guard = Some(new_node);
-                Ok((result, committed_index))
+                (result, committed_index, result, leader_endpoint)
             }
             RaftNode::Leader(leader) => {
                 let (result, committed_index) = leader.handle_vote(candidate_id, candidate_term, last_log_index, last_log_term).await?;
-                let new_node = if result {
-                    let leader_endpoint = {
-                        let common = leader.common();
-                        let meta = common.meta.lock().await;
-                        meta.member(candidate_id)?
-                    };
-                    let follower = leader.step_down(candidate_term, leader_endpoint);
-                    RaftNode::Follower(follower)
+                let leader_endpoint = if result {
+                    let common = leader.common();
+                    let meta = common.meta.lock().await;
+                    Some(meta.member(candidate_id)?)
+                } else {
+                    None
+                };
+                (result, committed_index, result, leader_endpoint)
+            }
+            RaftNode::Learner(_) => return Err(RuftError::InvalidState("I am Learner".into())),
+        };
+
+        // Phase 2: State transformation
+        let current_node = guard.take().ok_or(RuftError::InvalidState("Node shutting down".into()))?;
+        let new_node = match current_node {
+            RaftNode::Follower(follower) => RaftNode::Follower(follower),
+            RaftNode::Candidate(candidate) => {
+                if should_step_down {
+                    RaftNode::Follower(candidate.step_down(candidate_term, leader_endpoint.unwrap()))
+                } else {
+                    RaftNode::Candidate(candidate)
+                }
+            }
+            RaftNode::Leader(leader) => {
+                if should_step_down {
+                    RaftNode::Follower(leader.step_down(candidate_term, leader_endpoint.unwrap()))
                 } else {
                     RaftNode::Leader(leader)
-                };
-                *guard = Some(new_node);
-                Ok((result, committed_index))
+                }
             }
-            RaftNode::Learner(_) => Err(RuftError::InvalidState("I am Learner".into())),
-        }
+            RaftNode::Learner(_) => unreachable!(),
+        };
+
+        *guard = Some(new_node);
+        Ok((result, committed_index))
     }
 
     /// Handle AppendEntries RPC
     pub async fn on_append_entries(&self, leader_id: u8, leader_term: u64, prev_log_index: u64, prev_log_term: u64, entries: Vec<()>, leader_commit: u64) -> Result<(bool, u64, u64)> {
         let mut guard = self.inner.lock().await;
-        let current_node = guard.take().ok_or(RuftError::InvalidState("Node shutting down".into()))?;
+        let current_node = guard.as_ref().ok_or(RuftError::InvalidState("Node shutting down".into()))?;
+        let term = current_node.common().meta.lock().await.term();
 
-        todo!()
-        // // check step down
-        // match current_node {
-        //     RaftNode::Follower(follower) => {}
-        //     RaftNode::Candidate(candidate) => {}
-        //     RaftNode::Leader(leader) => {}
-        //     RaftNode::Learner(learner) => {}
-        // }
-        // *guard = Some(new_node);
-        // 
-        // // handle append entry
-        // 
-        // 
-        // let current_term = current_node.current_term();
-        // 
-        // let term = new_node.current_term();
-        // Ok((success, match_idx, term))
+        // Phase 1: Check step down logic
+        let (should_step_down, leader_endpoint) = match current_node {
+            RaftNode::Follower(_) => {
+                // Follower doesn't need to step down, just validate
+                (false, None)
+            }
+            RaftNode::Candidate(candidate) => {
+                let should = candidate.check_step_down(leader_id, leader_term).await?;
+                let endpoint = if should {
+                    let common = candidate.common();
+                    let meta = common.meta.lock().await;
+                    Some(meta.member(leader_id)?)
+                } else {
+                    None
+                };
+                (should, endpoint)
+            }
+            RaftNode::Leader(leader) => {
+                let should = leader.check_step_down(leader_id, leader_term).await?;
+                let endpoint = if should {
+                    let common = leader.common();
+                    let meta = common.meta.lock().await;
+                    Some(meta.member(leader_id)?)
+                } else {
+                    None
+                };
+                (should, endpoint)
+            }
+            RaftNode::Learner(_) => return Err(RuftError::InvalidState("I am Learner".into())),
+        };
+
+        // Phase 2: State transformation
+        let current_node = guard.take().ok_or(RuftError::InvalidState("Node shutting down".into()))?;
+        let mut new_node = match current_node {
+            RaftNode::Follower(follower) => RaftNode::Follower(follower),
+            RaftNode::Candidate(candidate) => {
+                if should_step_down {
+                    RaftNode::Follower(candidate.step_down(leader_term, leader_endpoint.unwrap()))
+                } else {
+                    RaftNode::Candidate(candidate)
+                }
+            }
+            RaftNode::Leader(leader) => {
+                if should_step_down {
+                    RaftNode::Follower(leader.step_down(leader_term, leader_endpoint.unwrap()))
+                } else {
+                    RaftNode::Leader(leader)
+                }
+            }
+            RaftNode::Learner(_) => unreachable!(),
+        };
+
+        // Phase 3: Handle append entries on Follower
+        let result_tuple = if let RaftNode::Follower(ref mut follower) = new_node {
+            follower.handle_append_entries(leader_id, leader_term, prev_log_index, prev_log_term, entries, leader_commit).await
+        } else {
+            Ok((false, 0, term))
+        };
+
+        *guard = Some(new_node);
+        result_tuple
     }
 
     pub async fn on_pull_snapshot(&self) -> Result<()> {

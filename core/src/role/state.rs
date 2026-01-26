@@ -1,12 +1,12 @@
 use crate::node::meta::PersistentMeta;
 use crate::rpc::client::RemoteClient;
 use crate::rpc::Endpoint;
-use crate::{Config, RuftError};
+use crate::storage::LogStore;
 use crate::Result;
+use crate::{Config, RuftError};
 use dashmap::DashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use crate::storage::LogStore;
 
 /// Marker trait for valid Raft node states
 pub trait Role: Sized {
@@ -15,6 +15,10 @@ pub trait Role: Sized {
     fn common(&self) -> Arc<Common>;
 
     async fn handle_pre_vote(&self, _candidate_id: u8, candidate_term: u64, last_log_index: u64, last_log_term: u64) -> Result<(bool, u64)> {
+        if !self.is_voter() {
+            return Err(RuftError::InvalidState("I am not voter.".into()));
+        }
+
         let common = self.common();
         let meta = common.meta.lock().await;
 
@@ -22,10 +26,6 @@ pub trait Role: Sized {
         let current_term = meta.term();
         let current_log_id = meta.last_log_id();
         let current_log_term = meta.last_log_term();
-
-        if !self.is_voter() {
-            return Ok((false, committed_index));
-        }
 
         if candidate_term < current_term {
             return Ok((false, committed_index));
@@ -52,25 +52,32 @@ pub trait Role: Sized {
         let common = self.common();
 
         // Check and set voted_for
-        {
-            let mut meta = common.meta.lock().await;
-            let voted_for = meta.voted_for();
-            let can_vote = voted_for.is_none() || voted_for == Some(candidate_id);
-            if !can_vote {
-                return Ok((false, committed_index));
-            }
-            meta.set_voted_for(candidate_term, candidate_id)?;
+        let mut meta = common.meta.lock().await;
+        let voted_for = meta.voted_for();
+        let can_vote = voted_for.is_none() || voted_for == Some(candidate_id);
+        if !can_vote {
+            return Ok((false, committed_index));
         }
+        meta.set_term(candidate_term, candidate_id)?;
 
         Ok((true, committed_index))
-
     }
 
-    async fn check_step_down(&self, remote_id: u8, remote_term: u8) -> Result<bool> {
+    async fn check_step_down(&self, remote_id: u8, remote_term: u64) -> Result<bool> {
+        if !self.is_voter() {
+            return Err(RuftError::InvalidState("I am not voter.".into()));
+        }
 
-        todo!()
+        let common = self.common();
+        let mut meta = common.meta.lock().await;
+        let current_term = meta.term();
+
+        let step_down = remote_term > current_term;
+        if step_down {
+            meta.set_term(remote_term, remote_id)?;
+        }
+        Ok(step_down)
     }
-
 }
 
 /// Shared data across all roles
