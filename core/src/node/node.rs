@@ -351,16 +351,15 @@ impl Node {
     pub async fn on_append_entries(&self, leader_id: u8, leader_term: u64, prev_log_index: u64, prev_log_term: u64, entries: Vec<()>, leader_commit: u64) -> Result<(bool, u64, u64)> {
         let term = self.step_down_if(leader_id, leader_term).await?;
 
-        let guard = self.inner.lock().await;
-        let current_node = guard.as_ref().ok_or(RuftError::InvalidState("Node shutting down".into()))?;
+        let mut guard = self.inner.lock().await;
+        let current_node = guard.as_mut().ok_or(RuftError::InvalidState("Node shutting down".into()))?;
 
-        let result_tuple = if let RaftNode::Follower(mut follower) = current_node {
-            follower.handle_append_entries(leader_id, leader_term, prev_log_index, prev_log_term, entries, leader_commit).await
-        } else {
-            Ok((false, 0, term))
-        };
-
-        result_tuple
+        match current_node {
+            RaftNode::Follower(follower) => {
+                follower.handle_append_entries(leader_id, leader_term, prev_log_index, prev_log_term, entries, leader_commit).await
+            }
+            _ => Ok((false, 0, term)),
+        }
     }
 
     pub async fn on_pull_snapshot(&self) -> Result<()> {
