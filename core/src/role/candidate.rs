@@ -1,8 +1,8 @@
+use crate::RuftError;
 use crate::role::state::{Common, Role};
 use crate::role::{Follower, Leader};
-use crate::rpc::client::RaftRpcClient;
 use crate::rpc::Endpoint;
-use crate::RuftError;
+use crate::rpc::client::RaftRpcClient;
 use std::cmp::PartialEq;
 use std::collections::HashMap;
 use std::fmt::Display;
@@ -48,17 +48,9 @@ impl Display for Candidate {
 }
 
 pub enum VoteResult {
-    Won(
-        HashMap<u8, u64>, // id -> committed_index
-    ),
+    Won(HashMap<u8, u64>), // id -> committed_index
     Lost,
     InProgress,
-}
-
-impl PartialEq for VoteResult {
-    fn eq(&self, other: &Self) -> bool {
-        std::mem::discriminant(self) == std::mem::discriminant(other)
-    }
 }
 
 /// Business logic for Candidate role
