@@ -43,12 +43,12 @@ impl RaftRpcClient for RemoteClient {
             last_log_index: last_log_id,
             last_log_term,
         };
-        let resp = self
+        self
             .client
             .pre_vote(request)
             .await
-            .map_err(|e| RuftError::Network(format!("pre_vote failed: {}", e)))?;
-        Ok(resp.into_inner())
+            .map_err(|e| RuftError::Network(format!("pre_vote failed: {}", e)))
+            .map(|resp| resp.into_inner())
     }
 
     async fn request_vote(&mut self, term: u64, candidate_id: u8, last_log_id: u64, last_log_term: u64) -> crate::Result<RequestVoteResponse> {

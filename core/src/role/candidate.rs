@@ -26,7 +26,6 @@ impl Candidate {
     pub fn pre_vote_term(&self) -> u64 {
         self.pre_vote_term
     }
-
 }
 impl Role for Candidate {
     fn my_id(&self) -> u8 {
@@ -64,11 +63,11 @@ impl PartialEq for VoteResult {
 
 /// Business logic for Candidate role
 impl Candidate {
-    async fn send_pre_vote(&mut self) -> crate::Result<bool> {
+    async fn send_pre_vote(&mut self) -> crate::Result<VoteResult> {
         let total_nodes = self.common.voting_clients.len() + 1; // +1 for self
         let majority = (total_nodes / 2) + 1;
-        let mut need_grant = majority - 1;
-        let mut refuse_grant = majority;
+        let mut granted = 1;
+        let mut refused = 0;
 
         let (last_log_term, last_log_id) = {
             let guard = self.common.meta.lock().await;
@@ -100,20 +99,21 @@ impl Candidate {
 
         for res in results.into_iter().filter_map(Result::ok) {
             if res.vote_granted {
-                need_grant = need_grant - 1;
-                if need_grant == 0 {
-                    return Ok(true);
+                granted = granted + 1;
+                if granted >= majority {
+                    return Ok(VoteResult::Won(HashMap::default()));
                 }
             } else {
-                refuse_grant = refuse_grant - 1;
-                if refuse_grant == 0 {
-                    return Ok(false);
+                refused = refused + 1;
+                if refused >= majority {
+                    return Ok(VoteResult::Lost);
                 }
             }
         }
 
-        Ok(false)
+        Ok(VoteResult::InProgress)
     }
+
     async fn send_request_vote(&mut self) -> crate::Result<VoteResult> {
         let total_nodes = self.common.voting_clients.len() + 1; // +1 for self
         let majority = (total_nodes / 2) + 1;
@@ -172,8 +172,11 @@ impl Candidate {
     /// trigger elect leader
     pub async fn do_electing(&mut self) -> crate::Result<VoteResult> {
         let pre_vote_result = self.send_pre_vote().await?;
-
-        if pre_vote_result { Ok(VoteResult::Lost) } else { self.send_request_vote().await }
+        if let VoteResult::Won(_) = pre_vote_result {
+            self.send_request_vote().await
+        } else {
+            Ok(VoteResult::Lost)
+        }
     }
 
     /// Discovered a leader - step down to Follower
