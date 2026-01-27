@@ -172,7 +172,7 @@ impl Candidate {
     }
 
     /// Discovered a leader - step down to Follower
-    pub fn step_down(self, leader_term: u64, leader: Endpoint) -> Follower {
+    pub fn transition_follower(self, leader_term: u64, leader: Endpoint) -> Follower {
         Follower::new(self.my_id, leader_term, leader, self.common)
     }
 

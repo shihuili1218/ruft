@@ -1,14 +1,16 @@
 use crate::role::state::{Common, Role};
 use crate::role::Follower;
 use crate::rpc::Endpoint;
+use crate::storage::LogStore;
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::sync::Arc;
 
 pub struct Replication {
-    confirmed: u64, // 等价于 nextIndex - 1
+    logs: Arc<LogStore>,
+    confirmed: u64,   // 等价于 nextIndex - 1
     match_index: u64, // 可选：用于 commit 计算
-                    // inflight: Vec<u64>,
+    inflight: Vec<u64>,
 }
 
 /// Leader state: managing replication to followers
@@ -16,6 +18,7 @@ pub struct Replication {
 pub struct Leader {
     my_id: u8,
     term: u64,
+    preparing: bool,
     next_index: HashMap<u8, u64>,
     match_index: HashMap<u8, u64>,
     common: Arc<Common>,
@@ -26,6 +29,7 @@ impl Leader {
         Self {
             my_id,
             term,
+            preparing: false,
             next_index: HashMap::new(),
             match_index,
             common,
@@ -59,13 +63,15 @@ impl Display for Leader {
 
 /// Business logic for Leader role
 impl Leader {
-    pub async fn become_leader(&self) {
+    pub async fn become_leader(&mut self) {
+        self.send_append_entries().await;
+
         // todo: probe msg: heartbeat?
         // todo: merge log entry
+        self.preparing = true;
     }
 
-    /// Send AppendEntries RPCs
-    pub async fn heartbeat(&self) -> Vec<(Endpoint, HeartbeatRequest)> {
+    pub async fn send_append_entries(&self) {
         let meta = self.common.meta.lock().await;
         let mut requests = Vec::new();
 
@@ -105,7 +111,7 @@ impl Leader {
     }
 
     /// Discovered higher term - step down to Follower
-    pub fn step_down(self, new_term: u64, leader: Endpoint) -> Follower {
+    pub fn transition_follower(self, new_term: u64, leader: Endpoint) -> Follower {
         Follower::new(self.my_id, new_term, leader, self.common)
     }
 }

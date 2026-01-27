@@ -68,7 +68,6 @@ impl Node {
         let common = Arc::new(Common {
             endpoint: my.clone(),
             meta: Arc::new(Mutex::new(meta)),
-            logs: Arc::new(log_store),
             config,
             voting_clients: Arc::new(DashMap::new()),
             non_voting_clients: Arc::new(DashMap::new()),
@@ -181,8 +180,8 @@ impl Node {
                     VoteResult::Lost
                 });
                 if let VoteResult::Won(committed_index) = vote_result {
-                    let leader = candidate.transition_leader(committed_index).await;
-                    leader.become_leader().await;
+                    let mut leader = candidate.transition_leader(committed_index).await;
+                    let _ = leader.become_leader();
                     RaftNode::Leader(leader)
                 } else {
                     RaftNode::Candidate(candidate)
@@ -195,7 +194,7 @@ impl Node {
             }
             RaftNode::Leader(leader) => {
                 info!("Sending heartbeat for term {}", leader.term());
-                leader.heartbeat().await;
+                let _ = leader.send_append_entries();
                 RaftNode::Leader(leader)
             }
             RaftNode::Learner(learner) => RaftNode::Learner(learner),
@@ -282,14 +281,14 @@ impl Node {
             RaftNode::Follower(follower) => RaftNode::Follower(follower),
             RaftNode::Candidate(candidate) => {
                 if should_step_down {
-                    RaftNode::Follower(candidate.step_down(candidate_term, leader_endpoint.unwrap()))
+                    RaftNode::Follower(candidate.transition_follower(candidate_term, leader_endpoint.unwrap()))
                 } else {
                     RaftNode::Candidate(candidate)
                 }
             }
             RaftNode::Leader(leader) => {
                 if should_step_down {
-                    RaftNode::Follower(leader.step_down(candidate_term, leader_endpoint.unwrap()))
+                    RaftNode::Follower(leader.transition_follower(candidate_term, leader_endpoint.unwrap()))
                 } else {
                     RaftNode::Leader(leader)
                 }
@@ -328,14 +327,14 @@ impl Node {
             RaftNode::Follower(follower) => RaftNode::Follower(follower),
             RaftNode::Candidate(candidate) => {
                 if should_step_down {
-                    RaftNode::Follower(candidate.step_down(leader_term, leader_endpoint))
+                    RaftNode::Follower(candidate.transition_follower(leader_term, leader_endpoint))
                 } else {
                     RaftNode::Candidate(candidate)
                 }
             }
             RaftNode::Leader(leader) => {
                 if should_step_down {
-                    RaftNode::Follower(leader.step_down(leader_term, leader_endpoint))
+                    RaftNode::Follower(leader.transition_follower(leader_term, leader_endpoint))
                 } else {
                     RaftNode::Leader(leader)
                 }

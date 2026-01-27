@@ -48,6 +48,7 @@ impl Display for Follower {
 
 /// Business logic for Follower role
 impl Follower {
+
     /// Handle AppendEntries RPC from leader
     pub async fn handle_append_entries(&mut self, leader_id: u8, leader_term: u64, prev_log_index: u64, prev_log_term: u64, entries: Vec<()>, leader_commit: u64) -> Result<(bool, u64, u64)> {
         let meta = self.common.meta.lock().await;
@@ -57,7 +58,6 @@ impl Follower {
         if leader_term < current_term {
             return Ok((false, 0, current_term));
         }
-
 
         // Update term and leader if necessary
         if leader_term >= self.term {
