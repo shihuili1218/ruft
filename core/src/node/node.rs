@@ -1,7 +1,6 @@
 use crate::node::meta::PersistentMeta;
 use crate::repeat_timer::RepeatTimer;
 use crate::role::{Candidate, Common, Follower, Leader, Learner, Role, VoteResult};
-use crate::rpc::client::init_remote_client;
 use crate::rpc::command::{CmdReq, CmdResp};
 use crate::rpc::server::RuftServer;
 use crate::rpc::{AppendEntriesRequest, Endpoint};
@@ -16,7 +15,6 @@ use tracing::{error, info};
 
 /// Runtime representation of a Raft node
 /// Each variant holds a complete Role with embedded Common
-#[derive(Clone)]
 enum RaftNode {
     Follower(Follower),
     Candidate(Candidate),
@@ -69,8 +67,7 @@ impl Node {
             endpoint: my.clone(),
             meta: Arc::new(Mutex::new(meta)),
             config,
-            voting_clients: Arc::new(DashMap::new()),
-            non_voting_clients: Arc::new(DashMap::new()),
+            logs: Arc::new(log_store),
         });
 
         // Start as Follower with Dummy leader
@@ -82,49 +79,12 @@ impl Node {
     }
 
     pub async fn start(self: Arc<Self>) -> Result<()> {
-        // Initialize RPC clients
-        self.init_rpc_clients().await?;
-
         // Start RPC server
         let server = RuftServer::new(self.clone());
         tokio::spawn(server.start());
 
         // Start timer
         self.start_timer().await;
-
-        Ok(())
-    }
-
-    async fn init_rpc_clients(&self) -> Result<()> {
-        let guard = self.inner.lock().await;
-        let node = guard.as_ref().ok_or(RuftError::InvalidState("Node shutting down".into()))?;
-
-        let common = node.common();
-        common.voting_clients.clear();
-        common.non_voting_clients.clear();
-
-        let meta = common.meta.lock().await;
-        let members = meta.members();
-        let my_endpoint = &common.endpoint;
-
-        for endpoint in members {
-            if &endpoint == my_endpoint {
-                continue;
-            }
-
-            match init_remote_client(&endpoint).await {
-                Ok(client) => {
-                    if endpoint.is_voting() {
-                        common.voting_clients.insert(endpoint, client);
-                    } else {
-                        common.non_voting_clients.insert(endpoint, client);
-                    }
-                }
-                Err(e) => {
-                    error!("Failed to init remote client for {}: {}", endpoint, e);
-                }
-            }
-        }
 
         Ok(())
     }
@@ -354,9 +314,7 @@ impl Node {
         let current_node = guard.as_mut().ok_or(RuftError::InvalidState("Node shutting down".into()))?;
 
         match current_node {
-            RaftNode::Follower(follower) => {
-                follower.handle_append_entries(leader_id, leader_term, prev_log_index, prev_log_term, entries, leader_commit).await
-            }
+            RaftNode::Follower(follower) => follower.handle_append_entries(leader_id, leader_term, prev_log_index, prev_log_term, entries, leader_commit).await,
             _ => Ok((false, 0, term)),
         }
     }

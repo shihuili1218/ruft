@@ -3,6 +3,7 @@ mod follower;
 mod leader;
 mod learner;
 mod state;
+mod replication;
 
 pub(crate) use crate::role::candidate::{Candidate, VoteResult};
 pub(crate) use crate::role::follower::Follower;

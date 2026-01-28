@@ -85,7 +85,6 @@ pub trait Role: Sized {
 pub struct Common {
     pub endpoint: Endpoint,
     pub meta: Arc<Mutex<PersistentMeta>>,
+    pub logs: Arc<LogStore>,
     pub config: Config,
-    pub voting_clients: Arc<DashMap<Endpoint, RemoteClient>>,
-    pub non_voting_clients: Arc<DashMap<Endpoint, RemoteClient>>,
 }

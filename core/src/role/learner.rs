@@ -4,7 +4,6 @@ use std::fmt::Display;
 use std::sync::Arc;
 
 /// Learner state: non-voting member that only receives log replication
-#[derive(Clone)]
 pub struct Learner {
     my_id: u8,
     term: u64,

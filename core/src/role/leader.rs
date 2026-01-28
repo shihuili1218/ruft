@@ -1,37 +1,53 @@
+use crate::role::replication::Replication;
 use crate::role::state::{Common, Role};
 use crate::role::Follower;
+use crate::rpc::client::init_rpc_clients;
 use crate::rpc::Endpoint;
-use crate::storage::LogStore;
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::sync::Arc;
 
-pub struct Replication {
-    logs: Arc<LogStore>,
-    confirmed: u64,   // 等价于 nextIndex - 1
-    match_index: u64, // 可选：用于 commit 计算
-    inflight: Vec<u64>,
-}
-
 /// Leader state: managing replication to followers
-#[derive(Clone)]
 pub struct Leader {
     my_id: u8,
     term: u64,
     preparing: bool,
-    next_index: HashMap<u8, u64>,
-    match_index: HashMap<u8, u64>,
+    vote_replications: HashMap<u8, Replication>,
+    non_vote_replications: HashMap<u8, Replication>,
     common: Arc<Common>,
 }
 
 impl Leader {
-    pub fn new(my_id: u8, term: u64, match_index: HashMap<u8, u64>, common: Arc<Common>) -> Self {
+    pub async fn new(my_id: u8, term: u64, match_index: HashMap<u8, u64>, common: Arc<Common>) -> Self {
+        let (voting_clients, non_voting_clients) = {
+            let meta = common.meta.lock().await;
+            let members = meta.members();
+            let my_endpoint = &common.endpoint;
+
+            let endpoints = members.into_iter().filter(|ep| ep != my_endpoint).collect();
+            init_rpc_clients(endpoints).await
+        };
+        let voting_clients = voting_clients
+            .into_iter()
+            .map(|(k, v)| {
+                let match_idx = *match_index.get(&k).clone().unwrap_or(&0);
+                let replication = Replication::new(v, match_idx);
+                (k, replication)
+            })
+            .collect();
+        let non_voting_clients = non_voting_clients
+            .into_iter()
+            .map(|(k, v)| {
+                let replication = Replication::new(v, 0);
+                (k, replication)
+            })
+            .collect();
         Self {
             my_id,
             term,
             preparing: false,
-            next_index: HashMap::new(),
-            match_index,
+            vote_replications: voting_clients,
+            non_vote_replications: non_voting_clients,
             common,
         }
     }
@@ -57,14 +73,14 @@ impl Role for Leader {
 
 impl Display for Leader {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Leader[term={}, followers={}]", self.term, self.next_index.len())
+        write!(f, "Leader[term={}, followers={}]", self.term, self.vote_replications.len())
     }
 }
 
 /// Business logic for Leader role
 impl Leader {
     pub async fn become_leader(&mut self) {
-        self.send_append_entries().await;
+        self.non_vote_replications.iter().for_each(|(_, replication)| replication.start());
 
         // todo: probe msg: heartbeat?
         // todo: merge log entry
@@ -73,41 +89,8 @@ impl Leader {
 
     pub async fn send_append_entries(&self) {
         let meta = self.common.meta.lock().await;
-        let mut requests = Vec::new();
-
-        for (endpoint, &next_idx) in &self.next_index {
-            let prev_log_index = if next_idx > 0 { next_idx - 1 } else { 0 };
-            let prev_log_term = 0; // TODO: Get from log
-
-            requests.push((
-                endpoint.clone(),
-                HeartbeatRequest {
-                    term: self.term,
-                    leader_id: self.common.endpoint.id(),
-                    prev_log_index,
-                    prev_log_term,
-                    leader_commit: meta.committed_index(),
-                },
-            ));
-        }
 
         todo!()
-    }
-
-    /// Handle AppendEntries response from follower
-    pub fn handle_append_response(&mut self, follower: Endpoint, success: bool, match_index: u64) {
-        if success {
-            self.match_index.insert(follower.id(), match_index);
-            self.next_index.insert(follower.id(), match_index + 1);
-            // TODO: Update commit index if majority replicated
-        } else {
-            // Decrement next_index and retry
-            if let Some(next_idx) = self.next_index.get_mut(&follower.id()) {
-                if *next_idx > 0 {
-                    *next_idx -= 1;
-                }
-            }
-        }
     }
 
     /// Discovered higher term - step down to Follower

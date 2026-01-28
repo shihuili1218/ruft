@@ -1,9 +1,9 @@
-use crate::RuftError;
 use crate::role::state::{Common, Role};
 use crate::role::{Follower, Leader};
+use crate::rpc::client::{init_rpc_clients, RaftRpcClient, RemoteClient};
 use crate::rpc::Endpoint;
-use crate::rpc::client::RaftRpcClient;
-use std::cmp::PartialEq;
+use crate::RuftError;
+use dashmap::DashMap;
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::sync::Arc;
@@ -11,16 +11,32 @@ use std::time::Duration;
 
 /// Candidate state: requesting votes to become leader
 ///
-#[derive(Clone)]
 pub struct Candidate {
     my_id: u8,
     pre_vote_term: u64,
+    voting_clients: DashMap<u8, RemoteClient>,
+    _non_voting_clients: DashMap<u8, RemoteClient>,
     common: Arc<Common>,
 }
 
 impl Candidate {
-    pub fn new(my_id: u8, pre_vote_term: u64, common: Arc<Common>) -> Self {
-        Self { my_id, pre_vote_term, common }
+    pub async fn new(my_id: u8, pre_vote_term: u64, common: Arc<Common>) -> Self {
+        let (voting_clients, non_voting_clients) = {
+            let meta = common.meta.lock().await;
+            let members = meta.members();
+            let my_endpoint = &common.endpoint;
+
+            let endpoints = members.into_iter().filter(|ep| ep != my_endpoint).collect();
+            init_rpc_clients(endpoints).await
+        };
+
+        Self {
+            my_id,
+            pre_vote_term,
+            voting_clients,
+            _non_voting_clients: non_voting_clients,
+            common,
+        }
     }
 
     pub fn pre_vote_term(&self) -> u64 {
@@ -56,7 +72,7 @@ pub enum VoteResult {
 /// Business logic for Candidate role
 impl Candidate {
     async fn send_pre_vote(&mut self) -> crate::Result<VoteResult> {
-        let total_nodes = self.common.voting_clients.len() + 1; // +1 for self
+        let total_nodes = self.voting_clients.len() + 1; // +1 for self
         let majority = (total_nodes / 2) + 1;
         let mut granted = 1;
         let mut refused = 0;
@@ -70,7 +86,6 @@ impl Candidate {
 
         let rpc_timeout = Duration::from_millis(self.common.config.rpc_timeout_millis);
         let futures: Vec<_> = self
-            .common
             .voting_clients
             .iter()
             .map(|entry| {
@@ -107,7 +122,7 @@ impl Candidate {
     }
 
     async fn send_request_vote(&mut self) -> crate::Result<VoteResult> {
-        let total_nodes = self.common.voting_clients.len() + 1; // +1 for self
+        let total_nodes = self.voting_clients.len() + 1; // +1 for self
         let majority = (total_nodes / 2) + 1;
         let mut granted = 1; // Already voted for self
         let mut refused = 0;
@@ -117,22 +132,21 @@ impl Candidate {
             let request_vote_term = guard.next_term()?;
             (request_vote_term, guard.last_log_term(), guard.last_log_id())
         };
-        let id = self.my_id;
+        let my_id = self.my_id;
 
         let rpc_timeout = Duration::from_millis(self.common.config.rpc_timeout_millis);
         let futures: Vec<_> = self
-            .common
             .voting_clients
             .iter()
             .map(|entry| {
-                let endpoint = entry.key().clone();
+                let id = entry.key().clone();
                 let mut client = entry.value().clone();
                 async move {
-                    let result = tokio::time::timeout(rpc_timeout, client.request_vote(request_vote_term, id, last_log_id, last_log_term))
+                    let result = tokio::time::timeout(rpc_timeout, client.request_vote(request_vote_term, my_id, last_log_id, last_log_term))
                         .await
                         .map_err(|_| RuftError::Network(format!("Request vote timeout after {:?}", rpc_timeout)))
                         .flatten();
-                    result.map(|resp| (endpoint.id(), resp))
+                    result.map(|resp| (id, resp))
                 }
             })
             .collect();
@@ -179,6 +193,6 @@ impl Candidate {
     /// Won election - become Leader
     pub async fn transition_leader(self, committed_index: HashMap<u8, u64>) -> Leader {
         let term = { self.common.meta.lock().await.term() };
-        Leader::new(self.my_id, term, committed_index, self.common)
+        Leader::new(self.my_id, term, committed_index, self.common).await
     }
 }

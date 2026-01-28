@@ -6,7 +6,6 @@ use std::fmt::Display;
 use std::sync::Arc;
 
 /// Follower state: waiting for heartbeats from leader
-#[derive(Clone)]
 pub struct Follower {
     my_id: u8,
     term: u64,
@@ -70,7 +69,7 @@ impl Follower {
     }
 
     pub async fn transition_candidate(self) -> Candidate {
-        Candidate::new(self.my_id, self.term, self.common)
+        Candidate::new(self.my_id, self.term, self.common).await
     }
 }
 
