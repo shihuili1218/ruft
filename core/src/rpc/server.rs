@@ -45,7 +45,6 @@ impl RuftRpc for RuftServer {
     }
 
     async fn request_vote(&self, request: Request<RequestVoteRequest>) -> Result<Response<RequestVoteResponse>, Status> {
-
         let req = request.into_inner();
 
         let candidate_id = req.candidate_id.try_into().map_err(|_| Status::invalid_argument("candidate_id out of range"))?;

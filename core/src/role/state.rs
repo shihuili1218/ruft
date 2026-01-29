@@ -1,8 +1,8 @@
-use crate::node::meta::PersistentMeta;
-use crate::rpc::client::RemoteClient;
-use crate::rpc::Endpoint;
-use crate::storage::LogStore;
 use crate::Result;
+use crate::node::meta::PersistentMeta;
+use crate::rpc::Endpoint;
+use crate::rpc::client::RemoteClient;
+use crate::storage::LogStore;
 use crate::{Config, RuftError};
 use dashmap::DashMap;
 use std::sync::Arc;

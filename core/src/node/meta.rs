@@ -104,7 +104,6 @@ impl PersistentMeta {
         endpoint.ok_or(RuftError::Configuration(format!("Member not found: {}", id)))
     }
 
-
     pub fn voted_for(&self) -> Option<u8> {
         self.data.voted_for
     }

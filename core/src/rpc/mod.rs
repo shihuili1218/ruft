@@ -6,5 +6,3 @@ pub(crate) mod server;
 pub use crate::rpc::endpoint::Endpoint;
 
 tonic::include_proto!("ruft");
-
-

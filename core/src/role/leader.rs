@@ -1,8 +1,8 @@
+use crate::role::Follower;
 use crate::role::replication::Replication;
 use crate::role::state::{Common, Role};
-use crate::role::Follower;
-use crate::rpc::client::init_rpc_clients;
 use crate::rpc::Endpoint;
+use crate::rpc::client::{RemoteClient, init_rpc_clients};
 use std::collections::HashMap;
 use std::fmt::Display;
 use std::sync::Arc;
@@ -19,27 +19,31 @@ pub struct Leader {
 
 impl Leader {
     pub async fn new(my_id: u8, term: u64, match_index: HashMap<u8, u64>, common: Arc<Common>) -> Self {
-        let (voting_clients, non_voting_clients) = {
+        let remote_endpoints = {
             let meta = common.meta.lock().await;
             let members = meta.members();
             let my_endpoint = &common.endpoint;
-
-            let endpoints = members.into_iter().filter(|ep| ep != my_endpoint).collect();
-            init_rpc_clients(endpoints).await
+            members.into_iter().filter(|ep| ep != my_endpoint).collect()
         };
-        let voting_clients = voting_clients
+        let (voting, non_voting): (Vec<RemoteClient>, Vec<RemoteClient>) = init_rpc_clients(remote_endpoints).await.into_iter().partition(|c| c.is_voter());
+
+        let voting_clients = voting
             .into_iter()
-            .map(|(k, v)| {
-                let match_idx = *match_index.get(&k).clone().unwrap_or(&0);
-                let replication = Replication::new(v, match_idx);
-                (k, replication)
+            .map(|client| {
+                let id = client.my_id();
+                let match_idx = *match_index.get(&id).clone().unwrap_or(&0);
+                let logs = common.logs.clone();
+                let replication = Replication::new(client, logs, match_idx);
+                (id, replication)
             })
             .collect();
-        let non_voting_clients = non_voting_clients
+        let non_voting_clients = non_voting
             .into_iter()
-            .map(|(k, v)| {
-                let replication = Replication::new(v, 0);
-                (k, replication)
+            .map(|client| {
+                let id = client.my_id();
+                let logs = common.logs.clone();
+                let replication = Replication::new(client, logs, 0);
+                (id, replication)
             })
             .collect();
         Self {

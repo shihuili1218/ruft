@@ -1,10 +1,10 @@
 use prost::Message;
-use rocksdb::{Direction, IteratorMode, Options, WriteBatch, DB};
+use rocksdb::{DB, Direction, IteratorMode, Options, WriteBatch};
 use std::io;
-use std::path::{PathBuf};
+use std::path::PathBuf;
 
-pub use crate::rpc::LogEntry;
 use crate::RuftError;
+pub use crate::rpc::LogEntry;
 
 /// RocksDB-backed log storage for Raft
 ///

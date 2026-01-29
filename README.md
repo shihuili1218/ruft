@@ -1,7 +1,7 @@
 # ruft
+A CE-style Parallel Raft variant with explicit confirmed/committed separation and ordered apply guarantees.
 
-paper: https://github.com/HappyCS-Gu/Parallel-Raft-tla/blob/master/doc/2020.8-jos.pdf
-
+parallel raft paper: https://github.com/HappyCS-Gu/Parallel-Raft-tla/blob/master/doc/2020.8-jos.pdf
 
 # 选举
 Leader:

@@ -1,8 +1,8 @@
+use crate::RuftError;
 use crate::role::state::{Common, Role};
 use crate::role::{Follower, Leader};
-use crate::rpc::client::{init_rpc_clients, RaftRpcClient, RemoteClient};
 use crate::rpc::Endpoint;
-use crate::RuftError;
+use crate::rpc::client::{RaftRpcClient, RemoteClient, init_rpc_clients};
 use dashmap::DashMap;
 use std::collections::HashMap;
 use std::fmt::Display;
@@ -21,20 +21,22 @@ pub struct Candidate {
 
 impl Candidate {
     pub async fn new(my_id: u8, pre_vote_term: u64, common: Arc<Common>) -> Self {
-        let (voting_clients, non_voting_clients) = {
+        let remote_endpoints = {
             let meta = common.meta.lock().await;
             let members = meta.members();
             let my_endpoint = &common.endpoint;
-
-            let endpoints = members.into_iter().filter(|ep| ep != my_endpoint).collect();
-            init_rpc_clients(endpoints).await
+            members.into_iter().filter(|ep| ep != my_endpoint).collect()
         };
+
+        let (voting, non_voting): (Vec<RemoteClient>, Vec<RemoteClient>) = init_rpc_clients(remote_endpoints).await.into_iter().partition(|c| c.is_voter());
+        let voting: DashMap<u8, RemoteClient> = voting.into_iter().map(|c| (c.my_id(), c)).collect();
+        let non_voting: DashMap<u8, RemoteClient> = non_voting.into_iter().map(|c| (c.my_id(), c)).collect();
 
         Self {
             my_id,
             pre_vote_term,
-            voting_clients,
-            _non_voting_clients: non_voting_clients,
+            voting_clients: voting,
+            _non_voting_clients: non_voting,
             common,
         }
     }
